@@ -11,6 +11,7 @@ interface Vehicle {
   color: string;
   total_seats: number;
   status: string;
+  vehicle_img?: string | null;
   driver?: { name: string };
   bus_type?: { name: string };
   documents?: any[];
@@ -47,10 +48,12 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({ onNotify, showDocs }
     color: '',
     total_seats: '24',
     status: 'Active',
+    vehicle_img: '',
   });
 
   // Document modal & detail
   const [showDocModal, setShowDocModal] = useState(false);
+  const [editDocument, setEditDocument] = useState<any | null>(null);
   const [selectedVehicleForDocs, setSelectedVehicleForDocs] = useState<Vehicle | null>(null);
   const [savingDoc, setSavingDoc] = useState(false);
   const [docForm, setDocForm] = useState({
@@ -61,6 +64,7 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({ onNotify, showDocs }
     expiry_date: '',
     status: 'Valid',
     notes: '',
+    doc_img: '',
   });
 
   const [expiringDocs, setExpiringDocs] = useState<any[]>([]);
@@ -101,6 +105,7 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({ onNotify, showDocs }
       color: 'blue',
       total_seats: '24',
       status: 'Active',
+      vehicle_img: '',
     });
     setShowModal(true);
   };
@@ -114,11 +119,13 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({ onNotify, showDocs }
       color: v.color || '',
       total_seats: String(v.total_seats || 24),
       status: v.status || 'Active',
+      vehicle_img: '',
     });
     setShowModal(true);
   };
 
   const openAddDocument = (vehicle?: Vehicle) => {
+    setEditDocument(null);
     const targetId = vehicle?.id ? String(vehicle.id) : (vehicles[0]?.id ? String(vehicles[0].id) : '');
     setDocForm({
       vehicle_id: targetId,
@@ -128,9 +135,37 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({ onNotify, showDocs }
       expiry_date: '',
       status: 'Valid',
       notes: '',
+      doc_img: '',
     });
     setShowDocModal(true);
   };
+
+  const openEditDocument = (vehicle: Vehicle, document: any) => {
+    setSelectedVehicleForDocs(vehicle);
+    setEditDocument(document);
+    setDocForm({
+      vehicle_id: String(vehicle.id),
+      doc_type: document.doc_type,
+      doc_number: document.doc_number || '',
+      issue_date: document.issue_date || '',
+      expiry_date: document.expiry_date || '',
+      status: document.status || 'Valid',
+      notes: document.notes || '',
+      doc_img: '',
+    });
+    setShowDocModal(true);
+  };
+
+  const readImageFile = (file: File, onRead: (dataUrl: string) => void) => {
+    const reader = new FileReader();
+    reader.onload = () => onRead(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const selectedDocVehicle = vehicles.find((vehicle) => String(vehicle.id) === docForm.vehicle_id);
+  const duplicateDocType = Boolean(selectedDocVehicle?.documents?.some((document: any) =>
+    document.doc_type === docForm.doc_type && document.id !== editDocument?.id
+  ));
 
   const handleSaveVehicle = async () => {
     if (!form.registration_number) {
@@ -165,20 +200,35 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({ onNotify, showDocs }
       onNotify('Document number is required', 'error');
       return;
     }
+    if (duplicateDocType) {
+      onNotify(`A ${docForm.doc_type} document already exists for this vehicle`, 'error');
+      return;
+    }
 
     setSavingDoc(true);
     try {
-      await vehiclesAPI.addDocument(parseInt(docForm.vehicle_id), {
+      const documentPayload = {
         doc_type: docForm.doc_type,
         doc_number: docForm.doc_number,
+        doc_img: docForm.doc_img || null,
         issue_date: docForm.issue_date || null,
         expiry_date: docForm.expiry_date || null,
         status: docForm.status,
         notes: docForm.notes || null,
-      });
-      onNotify('Vehicle document uploaded successfully!');
+      };
+      if (editDocument) {
+        await vehiclesAPI.updateDocument(parseInt(docForm.vehicle_id), editDocument.id, documentPayload);
+        onNotify('Vehicle document updated successfully!');
+      } else {
+        await vehiclesAPI.addDocument(parseInt(docForm.vehicle_id), documentPayload);
+        onNotify('Vehicle document uploaded successfully!');
+      }
       setShowDocModal(false);
-      fetchVehicles();
+      await fetchVehicles();
+      if (selectedVehicleForDocs) {
+        const refreshedVehicle = await vehiclesAPI.show(selectedVehicleForDocs.id);
+        setSelectedVehicleForDocs(refreshedVehicle.data.data);
+      }
     } catch (err: any) {
       onNotify(err.response?.data?.message || 'Failed to add document', 'error');
     } finally {
@@ -280,7 +330,7 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({ onNotify, showDocs }
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm overflow-y-auto">
         <div className="relative w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-6 my-8">
           <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-            <h3 className="text-lg font-semibold text-white">Add Vehicle Document</h3>
+            <h3 className="text-lg font-semibold text-white">{editDocument ? 'Edit Vehicle Document' : 'Add Vehicle Document'}</h3>
             <button
               onClick={() => setShowDocModal(false)}
               className="text-slate-400 hover:text-white transition-colors"
@@ -298,6 +348,7 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({ onNotify, showDocs }
               <select
                 required
                 value={docForm.vehicle_id}
+                disabled={!!editDocument}
                 onChange={(e) => setDocForm({ ...docForm, vehicle_id: e.target.value })}
                 className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500"
               >
@@ -321,13 +372,26 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({ onNotify, showDocs }
                   onChange={(e) => setDocForm({ ...docForm, doc_type: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500"
                 >
-                  <option value="insurance">Insurance Policy</option>
-                  <option value="fitness">Fitness Certificate</option>
-                  <option value="pollution">Pollution Under Control (PUC)</option>
-                  <option value="registration">Registration Certificate (RC)</option>
-                  <option value="permit">Commercial Route Permit</option>
-                  <option value="other">Other Compliance Doc</option>
+                  {[
+                    ['insurance', 'Insurance Policy'],
+                    ['fitness', 'Fitness Certificate'],
+                    ['pollution', 'Pollution Under Control (PUC)'],
+                    ['registration', 'Registration Certificate (RC)'],
+                    ['permit', 'Commercial Route Permit'],
+                    ['other', 'Other Compliance Doc'],
+                  ].map(([value, label]) => (
+                    <option
+                      key={value}
+                      value={value}
+                      disabled={Boolean(selectedDocVehicle?.documents?.some((document: any) =>
+                        document.doc_type === value && document.id !== editDocument?.id
+                      ))}
+                    >
+                      {label}
+                    </option>
+                  ))}
                 </select>
+                {duplicateDocType && <p className="mt-1 text-xs text-rose-400">This vehicle already has a document of this type.</p>}
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">
@@ -342,6 +406,23 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({ onNotify, showDocs }
                   className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1">Document Image / PDF</label>
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) readImageFile(file, (doc_img) => setDocForm((previous) => ({ ...previous, doc_img })));
+                }}
+                className="block w-full text-xs text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-slate-700 file:px-3 file:py-2 file:text-xs file:font-medium file:text-white hover:file:bg-slate-600"
+              />
+              {(docForm.doc_img || editDocument?.doc_img) && <p className="mt-1 truncate text-xs text-slate-500">A document file is attached</p>}
+              {editDocument?.doc_img && !docForm.doc_img && editDocument.doc_img.match(/\.(png|jpe?g|webp|gif)(\?|$)/i) && (
+                <img src={editDocument.doc_img} alt="Current document" className="mt-2 h-24 w-full rounded-md object-cover" />
+              )}
             </div>
 
             {/* Issue Date & Expiry Date */}
@@ -400,7 +481,7 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({ onNotify, showDocs }
                 Cancel
               </Button>
               <Button type="submit" loading={savingDoc} icon={Upload}>
-                Save Document
+                {editDocument ? 'Update Document' : 'Save Document'}
               </Button>
             </div>
           </form>
@@ -487,6 +568,19 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({ onNotify, showDocs }
                     <div className="font-mono text-sm text-white font-medium">
                       {doc.doc_number || 'No Number'}
                     </div>
+                    {doc.doc_img && (doc.doc_img.match(/\.(png|jpe?g|webp|gif)(\?|$)/i) || doc.doc_img.startsWith('data:image/')) && (
+                      <img src={doc.doc_img} alt={`${doc.doc_type} document`} className="h-24 w-full rounded-md object-cover" />
+                    )}
+                    {doc.doc_img && !doc.doc_img.match(/\.(png|jpe?g|webp|gif)(\?|$)/i) && (
+                      <a href={doc.doc_img} target="_blank" rel="noreferrer" className="text-xs text-cyan-400 hover:text-cyan-300">
+                        View attached file
+                      </a>
+                    )}
+                    <div className="flex justify-end">
+                      <Button size="sm" variant="ghost" onClick={() => openEditDocument(selectedVehicleForDocs, doc)}>
+                        <Edit2 size={13} />
+                      </Button>
+                    </div>
                     <div className="text-xs text-slate-400 flex items-center justify-between pt-1 border-t border-slate-700/50">
                       <span>Expires:</span>
                       <span
@@ -535,7 +629,9 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({ onNotify, showDocs }
                         className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
                         style={{ background: 'rgba(99, 102, 241, 0.1)' }}
                       >
-                        <FileText size={14} style={{ color: '#818cf8' }} />
+                        {v.vehicle_img ? (
+                          <img src={v.vehicle_img} alt={v.registration_number} className="h-8 w-8 rounded-lg object-cover" />
+                        ) : <FileText size={14} style={{ color: '#818cf8' }} />}
                       </div>
                       <div>
                         <div className="text-white font-medium text-sm font-mono">{v.registration_number}</div>
@@ -647,6 +743,21 @@ export const VehiclesPage: React.FC<VehiclesPageProps> = ({ onNotify, showDocs }
             onChange={(v) => setForm({ ...form, total_seats: v })}
             placeholder="24"
           />
+          <div className="col-span-2">
+            <label className="mb-1 block text-xs font-medium text-slate-300">Vehicle Photo</label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) readImageFile(file, (vehicle_img) => setForm((previous) => ({ ...previous, vehicle_img })));
+              }}
+              className="block w-full text-xs text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-slate-700 file:px-3 file:py-2 file:text-xs file:font-medium file:text-white hover:file:bg-slate-600"
+            />
+            {(form.vehicle_img || editVehicle?.vehicle_img) && (
+              <img src={form.vehicle_img || editVehicle?.vehicle_img || ''} alt="Vehicle preview" className="mt-3 h-32 w-full rounded-lg object-cover" />
+            )}
+          </div>
         </div>
       </Modal>
 

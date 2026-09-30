@@ -14,4 +14,5 @@ router.post('/', vehicleController.create);
 router.put('/:id', vehicleController.update);
 router.delete('/:id', vehicleController.destroy);
 router.post('/:id/documents', vehicleController.addDocument);
+router.put('/:id/documents/:documentId', vehicleController.updateDocument);
 module.exports = router;

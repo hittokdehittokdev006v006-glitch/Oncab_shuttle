@@ -3,6 +3,28 @@
 const { Op } = require('sequelize');
 const { Vehicle, VehicleDocument, Driver, BusType } = require('../models');
 const { logAction } = require('../middleware/auditLog');
+const { saveBase64File, deleteFile, getImageUrl } = require('../utils/fileUpload');
+
+const serializeVehicle = (vehicle) => {
+  const data = vehicle.toJSON();
+  data.vehicle_img = getImageUrl(data.vehicle_img);
+  data.rc_certificate_img = getImageUrl(data.rc_certificate_img);
+  if (data.documents) {
+    data.documents = data.documents.map((document) => ({
+      ...document,
+      doc_img: getImageUrl(document.doc_img),
+    }));
+  }
+  return data;
+};
+
+const serializeDocument = (document) => {
+  const data = document.toJSON();
+  data.doc_img = getImageUrl(data.doc_img);
+  return data;
+};
+
+const isUniqueConstraintError = (err) => err.name === 'SequelizeUniqueConstraintError';
 
 const buildPagination = (page, limit) => {
   const p = Math.max(1, parseInt(page) || 1);
@@ -35,7 +57,7 @@ exports.list = async (req, res, next) => {
       order: [['created_at', 'DESC']],
     });
 
-    res.json({ success: true, data: rows, pagination: { total: count, page: p, limit: lim, pages: Math.ceil(count / lim) } });
+    res.json({ success: true, data: rows.map(serializeVehicle), pagination: { total: count, page: p, limit: lim, pages: Math.ceil(count / lim) } });
   } catch (err) {
     next(err);
   }
@@ -52,7 +74,7 @@ exports.show = async (req, res, next) => {
       ],
     });
     if (!vehicle) return res.status(404).json({ success: false, message: 'Vehicle not found' });
-    res.json({ success: true, data: vehicle });
+    res.json({ success: true, data: serializeVehicle(vehicle) });
   } catch (err) {
     next(err);
   }
@@ -60,23 +82,39 @@ exports.show = async (req, res, next) => {
 
 // ── Create Vehicle ─────────────────────────────────────────
 exports.create = async (req, res, next) => {
+  let uploadedImage;
   try {
-    const vehicle = await Vehicle.create(req.body);
+    const payload = { ...req.body };
+    if (typeof payload.vehicle_img === 'string' && payload.vehicle_img.startsWith('data:')) {
+      uploadedImage = saveBase64File(payload.vehicle_img, 'vehicles', 'vehicle');
+      payload.vehicle_img = uploadedImage;
+    }
+    const vehicle = await Vehicle.create(payload);
     await logAction({ userId: req.user?.id, userType: req.user?.role?.name, userName: req.user?.name, action: 'create', module: 'vehicles', entityType: 'Vehicle', entityId: vehicle.id, newValues: req.body, ipAddress: req.ip, description: `Created vehicle ${vehicle.registration_number}` });
-    res.status(201).json({ success: true, message: 'Vehicle created', data: vehicle });
+    res.status(201).json({ success: true, message: 'Vehicle created', data: serializeVehicle(vehicle) });
   } catch (err) {
+    if (uploadedImage) deleteFile(uploadedImage);
     next(err);
   }
 };
 
 // ── Update Vehicle ─────────────────────────────────────────
 exports.update = async (req, res, next) => {
+  let uploadedImage;
   try {
     const vehicle = await Vehicle.findByPk(req.params.id);
     if (!vehicle) return res.status(404).json({ success: false, message: 'Vehicle not found' });
-    await vehicle.update(req.body);
-    res.json({ success: true, message: 'Vehicle updated', data: vehicle });
+    const payload = { ...req.body };
+    const oldImage = vehicle.vehicle_img;
+    if (typeof payload.vehicle_img === 'string' && payload.vehicle_img.startsWith('data:')) {
+      uploadedImage = saveBase64File(payload.vehicle_img, 'vehicles', `vehicle_${vehicle.id}`);
+      payload.vehicle_img = uploadedImage;
+    } else delete payload.vehicle_img;
+    await vehicle.update(payload);
+    if (uploadedImage && oldImage && oldImage !== uploadedImage) deleteFile(oldImage);
+    res.json({ success: true, message: 'Vehicle updated', data: serializeVehicle(vehicle) });
   } catch (err) {
+    if (uploadedImage) deleteFile(uploadedImage);
     next(err);
   }
 };
@@ -95,12 +133,61 @@ exports.destroy = async (req, res, next) => {
 
 // ── Add Document ───────────────────────────────────────────
 exports.addDocument = async (req, res, next) => {
+  let uploadedImage;
   try {
     const vehicle = await Vehicle.findByPk(req.params.id);
     if (!vehicle) return res.status(404).json({ success: false, message: 'Vehicle not found' });
-    const doc = await VehicleDocument.create({ ...req.body, vehicle_id: vehicle.id });
-    res.status(201).json({ success: true, message: 'Document added', data: doc });
+    const existing = await VehicleDocument.findOne({ where: { vehicle_id: vehicle.id, doc_type: req.body.doc_type } });
+    if (existing) {
+      return res.status(409).json({ success: false, message: `A ${req.body.doc_type} document already exists for this vehicle` });
+    }
+    const payload = { ...req.body, vehicle_id: vehicle.id };
+    if (typeof payload.doc_img === 'string' && payload.doc_img.startsWith('data:')) {
+      uploadedImage = saveBase64File(payload.doc_img, `vehicles/${vehicle.id}/documents`, payload.doc_type);
+      payload.doc_img = uploadedImage;
+    }
+    const doc = await VehicleDocument.create(payload);
+    res.status(201).json({ success: true, message: 'Document added', data: serializeDocument(doc) });
   } catch (err) {
+    if (uploadedImage) deleteFile(uploadedImage);
+    if (isUniqueConstraintError(err)) {
+      return res.status(409).json({ success: false, message: `A ${req.body.doc_type} document already exists for this vehicle` });
+    }
+    next(err);
+  }
+};
+
+// ── Update Document ────────────────────────────────────────
+exports.updateDocument = async (req, res, next) => {
+  let uploadedImage;
+  try {
+    const document = await VehicleDocument.findOne({
+      where: { id: req.params.documentId, vehicle_id: req.params.id },
+    });
+    if (!document) return res.status(404).json({ success: false, message: 'Vehicle document not found' });
+
+    const nextType = req.body.doc_type || document.doc_type;
+    const existing = await VehicleDocument.findOne({
+      where: { vehicle_id: document.vehicle_id, doc_type: nextType, id: { [Op.ne]: document.id } },
+    });
+    if (existing) {
+      return res.status(409).json({ success: false, message: `A ${nextType} document already exists for this vehicle` });
+    }
+
+    const payload = { ...req.body };
+    const oldImage = document.doc_img;
+    if (typeof payload.doc_img === 'string' && payload.doc_img.startsWith('data:')) {
+      uploadedImage = saveBase64File(payload.doc_img, `vehicles/${document.vehicle_id}/documents`, payload.doc_type || document.doc_type);
+      payload.doc_img = uploadedImage;
+    } else delete payload.doc_img;
+    await document.update(payload);
+    if (uploadedImage && oldImage && oldImage !== uploadedImage) deleteFile(oldImage);
+    res.json({ success: true, message: 'Document updated', data: serializeDocument(document) });
+  } catch (err) {
+    if (uploadedImage) deleteFile(uploadedImage);
+    if (isUniqueConstraintError(err)) {
+      return res.status(409).json({ success: false, message: `A ${req.body.doc_type} document already exists for this vehicle` });
+    }
     next(err);
   }
 };

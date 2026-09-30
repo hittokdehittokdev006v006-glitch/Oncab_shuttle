@@ -108,6 +108,7 @@ export const vehiclesAPI = {
   update: (id: number, data: object) => api.put(`/vehicles/${id}`, data),
   delete: (id: number) => api.delete(`/vehicles/${id}`),
   addDocument: (id: number, data: object) => api.post(`/vehicles/${id}/documents`, data),
+  updateDocument: (id: number, documentId: number, data: object) => api.put(`/vehicles/${id}/documents/${documentId}`, data),
   expiringDocs: (days?: number) => api.get('/vehicles/expiring-documents', { params: { days } }),
   busTypes: () => api.get('/vehicles/bus-types'),
 };

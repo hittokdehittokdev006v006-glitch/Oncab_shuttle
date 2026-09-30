@@ -21,6 +21,7 @@ const VehicleDocument = sequelize.define('VehicleDocument', {
   timestamps: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at',
+  indexes: [{ unique: true, fields: ['vehicle_id', 'doc_type'], name: 'vehicle_documents_vehicle_type_unique' }],
 });
 
 module.exports = VehicleDocument;
