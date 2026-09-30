@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus, Edit2, Trash2, Phone, Mail, MapPin, Upload, Image, CheckCircle2, X, Eye, FileText } from 'lucide-react';
 import { driversAPI } from '../services/api';
 import { Card, Table, Tr, Td, Pagination, SearchInput, Button, Select, StatusBadge, Modal, ConfirmDialog, LoadingState, ErrorState, EmptyState, Badge } from '../components/ui';
@@ -41,6 +41,7 @@ export const DriversPage: React.FC<DriversPageProps> = ({ onNotify }) => {
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, pages: 1, limit: 15 });
+  const latestFetchId = useRef(0);
 
   const [showModal, setShowModal] = useState(false);
   const [editDriver, setEditDriver] = useState<Driver | null>(null);
@@ -67,16 +68,19 @@ export const DriversPage: React.FC<DriversPageProps> = ({ onNotify }) => {
   });
 
   const fetchDrivers = useCallback(async () => {
+    const fetchId = ++latestFetchId.current;
     try {
       setLoading(true);
       setError('');
       const resp = await driversAPI.list({ page, limit: 15, search, status: statusFilter });
+      if (fetchId !== latestFetchId.current) return;
       setDrivers(resp.data.data || []);
       setPagination(resp.data.pagination || { total: 0, pages: 1, limit: 15 });
     } catch (err: any) {
+      if (fetchId !== latestFetchId.current) return;
       setError(err.response?.data?.message || 'Failed to load drivers');
     } finally {
-      setLoading(false);
+      if (fetchId === latestFetchId.current) setLoading(false);
     }
   }, [page, search, statusFilter]);
 
@@ -122,16 +126,33 @@ export const DriversPage: React.FC<DriversPageProps> = ({ onNotify }) => {
     setShowModal(true);
   };
 
+  // const handleFileUpload = (field: 'aadhar_img' | 'pan_img') => (e: React.ChangeEvent<HTMLInputElement>) => {
+  //   const file = e.target.files?.[0];
+  //   if (file) {
+  //     const reader = new FileReader();
+  //     reader.onloadend = () => {
+  //       setForm((prev) => ({ ...prev, [field]: reader.result as string }));
+  //     };
+  //     reader.readAsDataURL(file);
+  //   }
+  // };
+
   const handleFileUpload = (field: 'aadhar_img' | 'pan_img') => (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setForm((prev) => ({ ...prev, [field]: reader.result as string }));
-      };
-      reader.readAsDataURL(file);
-    }
-  };
+  const file = e.target.files?.[0];
+
+  if (file) {
+    const reader = new FileReader();
+
+    reader.onloadend = () => {
+      setForm((prev) => ({
+        ...prev,
+        [field]: reader.result as string,
+      }));
+    };
+
+    reader.readAsDataURL(file);
+  }
+};
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -149,7 +170,7 @@ export const DriversPage: React.FC<DriversPageProps> = ({ onNotify }) => {
         onNotify('Driver created successfully');
       }
       setShowModal(false);
-      fetchDrivers();
+      await fetchDrivers();
     } catch (err: any) {
       onNotify(err.response?.data?.message || 'Save failed', 'error');
     } finally {

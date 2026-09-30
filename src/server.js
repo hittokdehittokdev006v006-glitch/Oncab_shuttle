@@ -24,9 +24,11 @@ const bookingRoutes = require('../routes/bookingRoutes');
 const refundRoutes = require('../routes/refundRoutes');
 const dashboardRoutes = require('../routes/dashboardRoutes');
 const otherRoutes = require('../routes/otherRoutes');
+const internalRoutes = require('../routes/internal');
+
 
 const app = express();
-
+app.set('trust proxy', 1);
 // ── Security & Middleware ───────────────────────────────────
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({
@@ -55,31 +57,27 @@ const frontendPath = path.join(__dirname, 'frontend', 'dist');
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 app.use('/', express.static(frontendPath));
 
-// ── API Router ───────────────────────────────────────────────
-const apiRouter = express.Router();
+// ── API Routes ───────────────────────────────────────────────
+app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString(), env: process.env.NODE_ENV }));
 
-apiRouter.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString(), env: process.env.NODE_ENV }));
-apiRouter.use('/auth', authLimiter, authRoutes);
-apiRouter.use('/dashboard', dashboardRoutes);
-apiRouter.use('/users', userRoutes);
-apiRouter.use('/roles', roleRoutes);
-apiRouter.use('/drivers', driverRoutes);
-apiRouter.use('/bus-driver', driverAppRoutes);
-apiRouter.use('/driver-app', driverAppRoutes);
-apiRouter.use('/vehicles', vehicleRoutes);
-apiRouter.use('/routes', routeRoutes);
-apiRouter.use('/trips', tripRoutes);
-apiRouter.use('/bookings', bookingRoutes);
-apiRouter.use('/refunds', refundRoutes);
-apiRouter.use('/', otherRoutes);
-
-// Mount API on standard /api as well as subpath /bus-operator-dev/api
-app.use('/api', limiter, apiRouter);
-app.use('/bus-operator-dev/api', limiter, apiRouter);
+app.use('/api2/auth', authRoutes);
+app.use('/api2/internal',internalRoutes);
+app.use('/api2/dashboard', dashboardRoutes);
+app.use('/api2/users', userRoutes);
+app.use('/api2/roles', roleRoutes);
+app.use('/api2/drivers', driverRoutes);
+app.use('/api2/bus-driver', driverAppRoutes);
+app.use('/api2/driver-app', driverAppRoutes);
+app.use('/api2/vehicles', vehicleRoutes);
+app.use('/api2/routes', routeRoutes);
+app.use('/api2/trips', tripRoutes);
+app.use('/api2/bookings', bookingRoutes);
+app.use('/api2/refunds', refundRoutes);
+app.use('/api2', otherRoutes);
 
 // ── SPA Fallback ─────────────────────────────────────────────
 app.get('{*splat}', (req, res) => {
-  if (req.path.startsWith('/api') || req.path.startsWith('/bus-operator-dev/api')) {
+  if (req.path.startsWith('/api')) {
     return res.status(404).json({ success: false, message: `Route ${req.method} ${req.path} not found` });
   }
   res.sendFile(path.join(frontendPath, 'index.html'));

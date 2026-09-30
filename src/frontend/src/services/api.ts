@@ -7,9 +7,9 @@ const getBaseUrl = () => {
   }
   const pathname = window.location.pathname;
   if (pathname.includes('/bus-operator-dev')) {
-    return '/bus-operator-dev/api';
+    return '/bus-operator-dev/api2';
   }
-  return '/api';
+  return '/api2';
 };
 
 const BASE_URL = getBaseUrl();

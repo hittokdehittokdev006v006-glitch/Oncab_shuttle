@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-
+const ROUTE_PREFIX = (import.meta.env.VITE_ROUTE_PREFIX || '').replace(/\/$/, '');
 export type View = 
   | 'dashboard' | 'users' | 'roles' | 'drivers' | 'vehicles' | 'vehicle-docs'
   | 'routes' | 'stops' | 'trips' | 'scheduled-trips'
@@ -122,10 +122,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onSelectView, isO
     try { await logout(); } finally { setLoggingOut(false); }
   };
 
+  // const handleNav = (id: View) => {
+  //   onSelectView(id);
+  //   onClose();
+  // };
   const handleNav = (id: View) => {
-    onSelectView(id);
-    onClose();
-  };
+  onSelectView(id);
+
+  const routePath = `${ROUTE_PREFIX}/${id}`.replace(/\/+/g, '/');
+
+  if (window.location.pathname !== routePath) {
+    window.history.pushState({}, '', routePath);
+  }
+
+  onClose();
+};
 
   const isLight = theme === 'light';
   const roleBadgeColor = user?.role?.name === 'admin' ? '#6366f1' : '#10b981';
