@@ -1,0 +1,200 @@
+import axios from 'axios';
+
+// Get base path dynamically for sub-folder deployments (e.g. /bus-operator-dev/)
+const getBaseUrl = () => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  const pathname = window.location.pathname;
+  if (pathname.includes('/bus-operator-dev')) {
+    return '/bus-operator-dev/api';
+  }
+  return '/api';
+};
+
+const BASE_URL = getBaseUrl();
+
+const api = axios.create({
+  baseURL: BASE_URL,
+  headers: { 'Content-Type': 'application/json' },
+  timeout: 30000,
+});
+
+// Request interceptor - attach access token
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('access_token');
+    if (token) config.headers.Authorization = `Bearer ${token}`;
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Response interceptor - handle token refresh
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    if (error.response?.status === 401 && error.response?.data?.code === 'TOKEN_EXPIRED' && !originalRequest._retry) {
+      originalRequest._retry = true;
+      try {
+        const refreshToken = localStorage.getItem('refresh_token');
+        const resp = await axios.post(`${BASE_URL}/auth/refresh-token`, { refreshToken });
+        const { accessToken, refreshToken: newRefresh } = resp.data.data;
+        localStorage.setItem('access_token', accessToken);
+        localStorage.setItem('refresh_token', newRefresh);
+        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+        return api(originalRequest);
+      } catch {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+export default api;
+
+// ── Typed API Helpers ──────────────────────────────────────
+export const authAPI = {
+  login: (email: string, password: string) => api.post('/auth/login', { email, password }),
+  logout: () => api.post('/auth/logout'),
+  me: () => api.get('/auth/me'),
+  forgotPassword: (email: string) => api.post('/auth/forgot-password', { email }),
+  resetPassword: (token: string, password: string) => api.post('/auth/reset-password', { token, password }),
+  changePassword: (currentPassword: string, newPassword: string) => api.post('/auth/change-password', { currentPassword, newPassword }),
+  refreshToken: (refreshToken: string) => api.post('/auth/refresh-token', { refreshToken }),
+};
+
+export const dashboardAPI = {
+  stats: () => api.get('/dashboard/stats'),
+  revenueReport: (params?: object) => api.get('/dashboard/revenue-report', { params }),
+  auditLogs: (params?: object) => api.get('/dashboard/audit-logs', { params }),
+};
+
+export const usersAPI = {
+  list: (params?: object) => api.get('/users', { params }),
+  show: (id: number) => api.get(`/users/${id}`),
+  create: (data: object) => api.post('/users', data),
+  update: (id: number, data: object) => api.put(`/users/${id}`, data),
+  delete: (id: number) => api.delete(`/users/${id}`),
+  toggleStatus: (id: number) => api.patch(`/users/${id}/toggle-status`),
+};
+
+export const rolesAPI = {
+  list: () => api.get('/roles'),
+  create: (data: object) => api.post('/roles', data),
+  update: (id: number, data: object) => api.put(`/roles/${id}`, data),
+  delete: (id: number) => api.delete(`/roles/${id}`),
+  listPermissions: () => api.get('/roles/permissions'),
+  assignPermissions: (id: number, permission_ids: number[]) => api.put(`/roles/${id}/permissions`, { permission_ids }),
+};
+
+export const driversAPI = {
+  list: (params?: object) => api.get('/drivers', { params }),
+  show: (id: number) => api.get(`/drivers/${id}`),
+  create: (data: object) => api.post('/drivers', data),
+  update: (id: number, data: object) => api.put(`/drivers/${id}`, data),
+  delete: (id: number) => api.delete(`/drivers/${id}`),
+  updateStatus: (id: number, data: object) => api.patch(`/drivers/${id}/status`, data),
+};
+
+export const vehiclesAPI = {
+  list: (params?: object) => api.get('/vehicles', { params }),
+  show: (id: number) => api.get(`/vehicles/${id}`),
+  create: (data: object) => api.post('/vehicles', data),
+  update: (id: number, data: object) => api.put(`/vehicles/${id}`, data),
+  delete: (id: number) => api.delete(`/vehicles/${id}`),
+  addDocument: (id: number, data: object) => api.post(`/vehicles/${id}/documents`, data),
+  expiringDocs: (days?: number) => api.get('/vehicles/expiring-documents', { params: { days } }),
+  busTypes: () => api.get('/vehicles/bus-types'),
+};
+
+export const routesAPI = {
+  list: (params?: object) => api.get('/routes', { params }),
+  show: (id: number) => api.get(`/routes/${id}`),
+  create: (data: object) => api.post('/routes', data),
+  update: (id: number, data: object) => api.put(`/routes/${id}`, data),
+  delete: (id: number) => api.delete(`/routes/${id}`),
+  addStop: (routeId: number, data: object) => api.post(`/routes/${routeId}/stops`, data),
+  updateStop: (routeId: number, stopId: number, data: object) => api.put(`/routes/${routeId}/stops/${stopId}`, data),
+  deleteStop: (routeId: number, stopId: number) => api.delete(`/routes/${routeId}/stops/${stopId}`),
+};
+
+export const tripsAPI = {
+  list: (params?: object) => api.get('/trips', { params }),
+  show: (id: number) => api.get(`/trips/${id}`),
+  create: (data: object) => api.post('/trips', data),
+  update: (id: number, data: object) => api.put(`/trips/${id}`, data),
+  delete: (id: number) => api.delete(`/trips/${id}`),
+  updateStatus: (id: number, status: string) => api.patch(`/trips/${id}/status`, { status }),
+  assignDriver: (id: number, driver_id: number) => api.patch(`/trips/${id}/assign-driver`, { driver_id }),
+  assignVehicle: (id: number, vehicle_id: number) => api.patch(`/trips/${id}/assign-vehicle`, { vehicle_id }),
+};
+
+export const bookingsAPI = {
+  list: (params?: object) => api.get('/bookings', { params }),
+  show: (id: number) => api.get(`/bookings/${id}`),
+  create: (data: object) => api.post('/bookings', data),
+  cancel: (id: number, reason?: string) => api.patch(`/bookings/${id}/cancel`, { cancellation_reason: reason }),
+  updatePayment: (id: number, data: object) => api.patch(`/bookings/${id}/payment`, data),
+  cancelled: (params?: object) => api.get('/bookings/cancelled', { params }),
+};
+
+export const refundsAPI = {
+  list: (params?: object) => api.get('/refunds', { params }),
+  failed: (params?: object) => api.get('/refunds/failed', { params }),
+  completed: (params?: object) => api.get('/refunds/completed', { params }),
+  process: (id: number, data: object) => api.patch(`/refunds/${id}/process`, data),
+  retry: (id: number) => api.patch(`/refunds/${id}/retry`),
+  markFailed: (id: number, reason: string) => api.patch(`/refunds/${id}/mark-failed`, { failure_reason: reason }),
+};
+
+export const passengersAPI = {
+  list: (params?: object) => api.get('/passengers', { params }),
+  show: (id: number) => api.get(`/passengers/${id}`),
+  create: (data: object) => api.post('/passengers', data),
+  update: (id: number, data: object) => api.put(`/passengers/${id}`, data),
+  delete: (id: number) => api.delete(`/passengers/${id}`),
+  toggleBlock: (id: number) => api.patch(`/passengers/${id}/toggle-block`),
+};
+
+export const passesAPI = {
+  list: (params?: object) => api.get('/passes', { params }),
+  show: (id: number) => api.get(`/passes/${id}`),
+  create: (data: object) => api.post('/passes', data),
+  update: (id: number, data: object) => api.put(`/passes/${id}`, data),
+  delete: (id: number) => api.delete(`/passes/${id}`),
+  expiringSoon: (days?: number) => api.get('/passes/expiring', { params: { days } }),
+};
+
+export const couponsAPI = {
+  list: (params?: object) => api.get('/coupons', { params }),
+  show: (id: number) => api.get(`/coupons/${id}`),
+  create: (data: object) => api.post('/coupons', data),
+  update: (id: number, data: object) => api.put(`/coupons/${id}`, data),
+  delete: (id: number) => api.delete(`/coupons/${id}`),
+  validate: (code: string, amount: number) => api.post('/coupons/validate', { code, amount }),
+};
+
+export const notificationsAPI = {
+  list: (params?: object) => api.get('/notifications', { params }),
+  send: (data: object) => api.post('/notifications', data),
+  markRead: (id: number) => api.patch(`/notifications/${id}/read`),
+  markAllRead: () => api.patch('/notifications/read-all'),
+  delete: (id: number) => api.delete(`/notifications/${id}`),
+};
+
+export const paymentsAPI = {
+  list: (params?: object) => api.get('/payments', { params }),
+  show: (id: number) => api.get(`/payments/${id}`),
+};
+
+export const settingsAPI = {
+  list: (group?: string) => api.get('/settings', { params: { group } }),
+  get: (key: string) => api.get(`/settings/${key}`),
+  update: (data: object) => api.post('/settings', data),
+  bulkUpdate: (settings: object[]) => api.put('/settings/bulk', { settings }),
+};

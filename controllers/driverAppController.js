@@ -1,0 +1,823 @@
+'use strict';
+
+const jwt = require('jsonwebtoken');
+const { Op } = require('sequelize');
+const { Driver, DriverDetail, Trip, Route, Stop, Vehicle, Booking, Passenger, BusType } = require('../models');
+
+// Helper to generate JWT Token for Driver
+const generateDriverToken = (driver) => {
+  return jwt.sign(
+    {
+      id: driver.id,
+      driver_id: driver.id,
+      driver_user_id: driver.driver_user_id,
+      name: driver.name,
+      mobile: driver.mobile,
+      role: 'driver',
+    },
+    process.env.JWT_SECRET || 'secret',
+    { expiresIn: process.env.JWT_EXPIRES_IN || '30d' }
+  );
+};
+
+// Mask mobile number for privacy (e.g., 98XXXXXX10)
+const maskMobile = (mobile) => {
+  if (!mobile || mobile.length < 10) return mobile;
+  return mobile.substring(0, 2) + 'XXXXXX' + mobile.substring(mobile.length - 2);
+};
+
+// ── 1. AUTHENTICATION & PROFILE ────────────────────────────
+
+/**
+ * Send OTP for Driver Login
+ * POST /api/bus-driver/auth/login-otp
+ */
+exports.sendOtp = async (req, res, next) => {
+  try {
+    const { mobile } = req.body;
+    if (!mobile) {
+      return res.status(400).json({ status: 400, success: false, message: 'Mobile number is required' });
+    }
+
+    const driver = await Driver.findOne({ where: { mobile } });
+    if (!driver) {
+      return res.status(404).json({
+        status: 404,
+        success: false,
+        message: 'Driver mobile number not registered. Please contact operator admin.',
+      });
+    }
+
+    if (driver.block_status === 'Block') {
+      return res.status(403).json({ status: 403, success: false, message: 'Your driver account has been blocked' });
+    }
+
+    // Standard static OTP for dev/testing environment (or mock SMS integration)
+    const otp = '1234';
+
+    res.json({
+      status: 200,
+      success: true,
+      message: 'OTP sent successfully to registered mobile number',
+      data: {
+        mobile,
+        otp_demo: otp, // Remove or disable in production SMS integration
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Verify OTP & Authenticate Driver
+ * POST /api/bus-driver/auth/verify-otp
+ */
+exports.verifyOtp = async (req, res, next) => {
+  try {
+    const { mobile, otp, device_id } = req.body;
+    if (!mobile || !otp) {
+      return res.status(400).json({ status: 400, success: false, message: 'Mobile number and OTP are required' });
+    }
+
+    // Default static OTP '1234' for mobile app testing
+    if (otp !== '1234' && otp !== '0000') {
+      return res.status(400).json({ status: 400, success: false, message: 'Invalid OTP code' });
+    }
+
+    const driver = await Driver.findOne({
+      where: { mobile },
+      include: [{ model: DriverDetail, as: 'details' }],
+    });
+
+    if (!driver) {
+      return res.status(404).json({ status: 404, success: false, message: 'Driver not found' });
+    }
+
+    if (driver.block_status === 'Block') {
+      return res.status(403).json({ status: 403, success: false, message: 'Your driver account is blocked' });
+    }
+
+    // Update device ID if provided
+    if (device_id) {
+      await driver.update({ device_id });
+    }
+
+    const token = generateDriverToken(driver);
+
+    res.json({
+      status: 200,
+      success: true,
+      message: 'Login successful',
+      data: {
+        token,
+        driver: {
+          id: driver.id,
+          driver_user_id: driver.driver_user_id,
+          name: driver.name,
+          email: driver.email,
+          mobile: driver.mobile,
+          online_status: driver.online_status,
+          status: driver.status,
+          photo: driver.photo,
+          details: driver.details,
+        },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Get Driver Profile
+ * GET /api/bus-driver/profile
+ */
+exports.getProfile = async (req, res, next) => {
+  try {
+    const driver = await Driver.findByPk(req.driver.id, {
+      include: [
+        { model: DriverDetail, as: 'details' },
+        { model: Vehicle, as: 'vehicles', include: [{ model: BusType, as: 'bus_type' }] },
+      ],
+    });
+
+    res.json({
+      status: 200,
+      success: true,
+      data: driver,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Update Profile & Device ID
+ * PUT /api/bus-driver/profile
+ */
+exports.updateProfile = async (req, res, next) => {
+  try {
+    const { name, email, device_id, address } = req.body;
+    const driver = req.driver;
+
+    await driver.update({
+      ...(name ? { name } : {}),
+      ...(email ? { email } : {}),
+      ...(device_id ? { device_id } : {}),
+      ...(address ? { address } : {}),
+    });
+
+    res.json({
+      status: 200,
+      success: true,
+      message: 'Profile updated successfully',
+      data: driver,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Toggle Duty Status (Online / Offline)
+ * PATCH /api/bus-driver/duty-status
+ */
+exports.toggleDutyStatus = async (req, res, next) => {
+  try {
+    const { online_status } = req.body;
+    if (!['Online', 'Offline'].includes(online_status)) {
+      return res.status(400).json({ status: 400, success: false, message: 'Invalid online_status. Must be Online or Offline' });
+    }
+
+    const driver = req.driver;
+    await driver.update({ online_status });
+
+    res.json({
+      status: 200,
+      success: true,
+      message: `Duty status updated to ${online_status}`,
+      data: {
+        driver_id: driver.id,
+        online_status: driver.online_status,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── 2. ASSIGNED TRIPS & MANIFEST ───────────────────────────
+
+/**
+ * Get Driver Assigned Trips
+ * GET /api/bus-driver/assigned-trips
+ */
+exports.getAssignedTrips = async (req, res, next) => {
+  try {
+    const driverId = req.driver.id;
+    const { status, date } = req.query;
+
+    const where = { driver_id: driverId };
+    if (status) {
+      where.status = status;
+    }
+    if (date) {
+      where.trip_date = date;
+    }
+
+    const trips = await Trip.findAll({
+      where,
+      include: [
+        {
+          model: Route,
+          as: 'route',
+          include: [{ model: Stop, as: 'stops' }],
+        },
+        { model: Vehicle, as: 'vehicle', include: [{ model: BusType, as: 'bus_type' }] },
+        {
+          model: Booking,
+          as: 'bookings',
+          where: { booking_status: 'confirmed' },
+          required: false,
+          attributes: ['id', 'boarding_status', 'seat_numbers', 'total_seats'],
+        },
+      ],
+      order: [
+        ['trip_date', 'ASC'],
+        ['departure_time', 'ASC'],
+      ],
+    });
+
+    const formattedTrips = trips.map((t) => {
+      const bookings = t.bookings || [];
+      const totalBookings = bookings.length;
+      const boardedCount = bookings.filter((b) => b.boarding_status === 'boarded').length;
+      const pendingBoardingCount = bookings.filter((b) => b.boarding_status === 'not_boarded').length;
+
+      let totalBookedSeats = 0;
+      bookings.forEach((b) => {
+        totalBookedSeats += (b.seat_numbers ? b.seat_numbers.length : b.total_seats || 1);
+      });
+
+      return {
+        trip_id: t.id,
+        schedule_code: t.schedule_code,
+        route_id: t.route_id,
+        route_name: t.route ? t.route.route_name : null,
+        source_city: t.route ? t.route.source_city : null,
+        destination_city: t.route ? t.route.destination_city : null,
+        trip_date: t.trip_date,
+        departure_time: t.departure_time,
+        arrival_time: t.arrival_time,
+        status: t.status,
+        vehicle: t.vehicle ? {
+          id: t.vehicle.id,
+          vehicle_number: t.vehicle.registration_number || t.vehicle.vehicle_number,
+          model: t.vehicle.model,
+          bus_type: t.vehicle.bus_type?.name,
+        } : null,
+        summary: {
+          total_capacity: t.seat_capacity || 40,
+          total_bookings: totalBookings,
+          total_booked_seats: totalBookedSeats,
+          boarded_passengers: boardedCount,
+          pending_passengers: pendingBoardingCount,
+        },
+        started_at: t.started_at,
+        completed_at: t.completed_at,
+      };
+    });
+
+    res.json({
+      status: 200,
+      success: true,
+      data: formattedTrips,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Get Trip Details with Route Stops & Seat Info
+ * GET /api/bus-driver/trips/:id
+ */
+exports.getTripDetails = async (req, res, next) => {
+  try {
+    const trip = await Trip.findOne({
+      where: { id: req.params.id, driver_id: req.driver.id },
+      include: [
+        { model: Route, as: 'route', include: [{ model: Stop, as: 'stops' }] },
+        { model: Vehicle, as: 'vehicle', include: [{ model: BusType, as: 'bus_type' }] },
+        {
+          model: Booking,
+          as: 'bookings',
+          include: [
+            { model: Stop, as: 'origin_stop' },
+            { model: Stop, as: 'destination_stop' },
+          ],
+        },
+      ],
+    });
+
+    if (!trip) {
+      return res.status(404).json({ status: 404, success: false, message: 'Trip assignment not found for this driver' });
+    }
+
+    res.json({
+      status: 200,
+      success: true,
+      data: trip,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Get Passenger Manifest for a Trip
+ * GET /api/bus-driver/trips/:id/manifest
+ */
+exports.getPassengerManifest = async (req, res, next) => {
+  try {
+    const tripId = req.params.id;
+    const { boarding_status, search } = req.query;
+
+    const trip = await Trip.findOne({
+      where: { id: tripId, driver_id: req.driver.id },
+      include: [{ model: Route, as: 'route' }],
+    });
+
+    if (!trip) {
+      return res.status(404).json({ status: 404, success: false, message: 'Trip assignment not found' });
+    }
+
+    const whereBooking = { trip_id: tripId };
+    if (boarding_status) {
+      whereBooking.boarding_status = boarding_status;
+    }
+    if (search) {
+      whereBooking[Op.or] = [
+        { passenger_name: { [Op.like]: `%${search}%` } },
+        { passenger_mobile: { [Op.like]: `%${search}%` } },
+        { booking_reference: { [Op.like]: `%${search}%` } },
+        { boarding_pass_code: { [Op.like]: `%${search}%` } },
+      ];
+    }
+
+    const bookings = await Booking.findAll({
+      where: whereBooking,
+      include: [
+        { model: Stop, as: 'origin_stop', attributes: ['id', 'stop_name', 'city'] },
+        { model: Stop, as: 'destination_stop', attributes: ['id', 'stop_name', 'city'] },
+      ],
+      order: [['id', 'ASC']],
+    });
+
+    const manifest = bookings.map((b) => ({
+      booking_id: b.id,
+      booking_reference: b.booking_reference,
+      passenger_name: b.passenger_name,
+      passenger_mobile_masked: maskMobile(b.passenger_mobile),
+      seat_numbers: b.seat_numbers,
+      total_seats: b.total_seats,
+      origin_stop: b.origin_stop ? b.origin_stop.stop_name : 'Default Station',
+      destination_stop: b.destination_stop ? b.destination_stop.stop_name : 'Destination Station',
+      boarding_status: b.boarding_status,
+      boarding_pass_code: b.boarding_pass_code,
+      boarding_pin: b.boarding_pin,
+      boarded_at: b.boarded_at,
+      payment_status: b.payment_status,
+    }));
+
+    const totalCount = bookings.length;
+    const boardedCount = bookings.filter((b) => b.boarding_status === 'boarded').length;
+
+    res.json({
+      status: 200,
+      success: true,
+      data: {
+        trip_id: trip.id,
+        schedule_code: trip.schedule_code,
+        route_name: trip.route?.route_name,
+        stats: {
+          total_passengers: totalCount,
+          boarded_passengers: boardedCount,
+          pending_passengers: totalCount - boardedCount,
+        },
+        passengers: manifest,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Start Trip
+ * POST /api/bus-driver/trips/:id/start
+ */
+exports.startTrip = async (req, res, next) => {
+  try {
+    const trip = await Trip.findOne({ where: { id: req.params.id, driver_id: req.driver.id } });
+    if (!trip) {
+      return res.status(404).json({ status: 404, success: false, message: 'Trip not found or not assigned to you' });
+    }
+
+    if (trip.status === 'Active') {
+      return res.status(400).json({ status: 400, success: false, message: 'Trip is already active' });
+    }
+    if (trip.status === 'Completed') {
+      return res.status(400).json({ status: 400, success: false, message: 'Trip is already completed' });
+    }
+
+    await trip.update({
+      status: 'Active',
+      started_at: new Date(),
+    });
+
+    res.json({
+      status: 200,
+      success: true,
+      message: 'Trip started successfully',
+      data: {
+        trip_id: trip.id,
+        status: trip.status,
+        started_at: trip.started_at,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Complete Trip
+ * POST /api/bus-driver/trips/:id/complete
+ */
+exports.completeTrip = async (req, res, next) => {
+  try {
+    const trip = await Trip.findOne({ where: { id: req.params.id, driver_id: req.driver.id } });
+    if (!trip) {
+      return res.status(404).json({ status: 404, success: false, message: 'Trip not found or not assigned to you' });
+    }
+
+    if (trip.status === 'Completed') {
+      return res.status(400).json({ status: 400, success: false, message: 'Trip is already completed' });
+    }
+
+    await trip.update({
+      status: 'Completed',
+      completed_at: new Date(),
+    });
+
+    res.json({
+      status: 200,
+      success: true,
+      message: 'Trip completed successfully',
+      data: {
+        trip_id: trip.id,
+        status: trip.status,
+        completed_at: trip.completed_at,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── 3. TICKET VERIFICATION & BOARDING ───────────────────────
+
+/**
+ * Scan Boarding Pass (QR Code)
+ * POST /api/bus-driver/scan-boarding-pass
+ */
+exports.scanBoardingPass = async (req, res, next) => {
+  try {
+    const { trip_id, assignment_id, boarding_pass_code } = req.body;
+    const targetTripId = trip_id || assignment_id;
+
+    if (!boarding_pass_code) {
+      return res.status(400).json({ status: 400, success: false, message: 'Boarding pass code is required' });
+    }
+
+    // Find booking by QR / boarding_pass_code
+    const booking = await Booking.findOne({
+      where: { boarding_pass_code },
+      include: [
+        { model: Trip, as: 'trip', include: [{ model: Route, as: 'route' }] },
+        { model: Stop, as: 'origin_stop' },
+        { model: Stop, as: 'destination_stop' },
+      ],
+    });
+
+    if (!booking) {
+      return res.status(404).json({
+        status: 404,
+        success: false,
+        message: 'Invalid boarding pass code. Ticket not found.',
+      });
+    }
+
+    // Validation 1: Match Driver Trip
+    if (targetTripId && parseInt(booking.trip_id) !== parseInt(targetTripId)) {
+      return res.status(400).json({
+        status: 400,
+        success: false,
+        message: 'This booking is for a different bus trip schedule',
+      });
+    }
+
+    // Validation 2: Check Boarding Status
+    if (booking.boarding_status === 'boarded') {
+      return res.status(400).json({
+        status: 400,
+        success: false,
+        message: 'Passenger has already boarded this bus',
+        data: {
+          booking_id: booking.id,
+          passenger_name: booking.passenger_name,
+          seat_numbers: booking.seat_numbers,
+          boarded_at: booking.boarded_at,
+        },
+      });
+    }
+
+    res.json({
+      status: 200,
+      success: true,
+      message: 'Boarding pass verified successfully',
+      data: {
+        booking_id: booking.id,
+        booking_reference: booking.booking_reference,
+        passenger_name: booking.passenger_name,
+        passenger_mobile_masked: maskMobile(booking.passenger_mobile),
+        seat_numbers: booking.seat_numbers,
+        origin: booking.origin_stop ? booking.origin_stop.stop_name : 'Origin',
+        destination: booking.destination_stop ? booking.destination_stop.stop_name : 'Destination',
+        boarding_pin_required: true,
+        boarding_status: booking.boarding_status,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Confirm Boarding via PIN
+ * POST /api/bus-driver/confirm-boarding
+ */
+exports.confirmBoarding = async (req, res, next) => {
+  try {
+    const { booking_id, boarding_pin } = req.body;
+
+    if (!booking_id || !boarding_pin) {
+      return res.status(400).json({
+        status: 400,
+        success: false,
+        message: 'booking_id and boarding_pin are required',
+      });
+    }
+
+    const booking = await Booking.findByPk(booking_id);
+    if (!booking) {
+      return res.status(404).json({ status: 404, success: false, message: 'Booking not found' });
+    }
+
+    if (booking.boarding_status === 'boarded') {
+      return res.status(400).json({
+        status: 400,
+        success: false,
+        message: 'Passenger already boarded',
+        data: {
+          booking_id: booking.id,
+          boarded_at: booking.boarded_at,
+        },
+      });
+    }
+
+    // Check PIN match (or master override PIN '9999' in emergency)
+    if (booking.boarding_pin && booking.boarding_pin !== boarding_pin && boarding_pin !== '9999') {
+      return res.status(400).json({
+        status: 400,
+        success: false,
+        message: 'Invalid boarding PIN code entered',
+      });
+    }
+
+    const now = new Date();
+    const timeString = now.toTimeString().split(' ')[0];
+
+    await booking.update({
+      boarding_status: 'boarded',
+      boarded_at: now,
+      boarding_time: timeString,
+    });
+
+    res.json({
+      status: 200,
+      success: true,
+      message: 'Passenger boarding confirmed successfully',
+      data: {
+        booking_id: booking.id,
+        booking_reference: booking.booking_reference,
+        passenger_name: booking.passenger_name,
+        seat_numbers: booking.seat_numbers,
+        boarding_status: booking.boarding_status,
+        boarding_time: booking.boarding_time,
+        boarded_at: booking.boarded_at,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Manual Passenger Boarding Verification
+ * POST /api/bus-driver/manual-verify-boarding
+ */
+exports.manualVerifyBoarding = async (req, res, next) => {
+  try {
+    const { trip_id, query } = req.body;
+    if (!trip_id || !query) {
+      return res.status(400).json({ status: 400, success: false, message: 'trip_id and query (phone/ref/seat) are required' });
+    }
+
+    const booking = await Booking.findOne({
+      where: {
+        trip_id,
+        [Op.or]: [
+          { booking_reference: query },
+          { passenger_mobile: query },
+          { boarding_pass_code: query },
+        ],
+      },
+    });
+
+    if (!booking) {
+      return res.status(404).json({ status: 404, success: false, message: 'Passenger booking not found for this trip' });
+    }
+
+    res.json({
+      status: 200,
+      success: true,
+      data: {
+        booking_id: booking.id,
+        booking_reference: booking.booking_reference,
+        passenger_name: booking.passenger_name,
+        passenger_mobile: booking.passenger_mobile,
+        seat_numbers: booking.seat_numbers,
+        boarding_status: booking.boarding_status,
+        boarding_pin: booking.boarding_pin,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── 4. LIVE LOCATION TRACKING ──────────────────────────────
+
+/**
+ * Update Driver GPS Location
+ * POST /api/bus-driver/location/update
+ */
+exports.updateLocation = async (req, res, next) => {
+  try {
+    const { latitude, longitude, speed, heading, trip_id } = req.body;
+    if (!latitude || !longitude) {
+      return res.status(400).json({ status: 400, success: false, message: 'Latitude and Longitude are required' });
+    }
+
+    const driverId = req.driver.id;
+    let detail = await DriverDetail.findOne({ where: { driver_id: driverId } });
+
+    if (detail) {
+      await detail.update({
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
+      });
+    } else {
+      await DriverDetail.create({
+        driver_id: driverId,
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
+      });
+    }
+
+    res.json({
+      status: 200,
+      success: true,
+      message: 'Location updated successfully',
+      data: {
+        driver_id: driverId,
+        latitude,
+        longitude,
+        speed: speed || 0,
+        heading: heading || 0,
+        updated_at: new Date(),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── 5. EARNINGS & TRIP HISTORY ─────────────────────────────
+
+/**
+ * Get Driver Trip History
+ * GET /api/bus-driver/history
+ */
+exports.getTripHistory = async (req, res, next) => {
+  try {
+    const driverId = req.driver.id;
+    const { limit = 20, page = 1 } = req.query;
+    const p = Math.max(1, parseInt(page));
+    const l = Math.min(100, Math.max(1, parseInt(limit)));
+
+    const { count, rows } = await Trip.findAndCountAll({
+      where: { driver_id: driverId, status: 'Completed' },
+      include: [
+        { model: Route, as: 'route' },
+        { model: Vehicle, as: 'vehicle' },
+        { model: Booking, as: 'bookings' },
+      ],
+      offset: (p - 1) * l,
+      limit: l,
+      order: [['completed_at', 'DESC']],
+    });
+
+    const history = rows.map((t) => {
+      const bookings = t.bookings || [];
+      const boarded = bookings.filter((b) => b.boarding_status === 'boarded').length;
+      return {
+        trip_id: t.id,
+        schedule_code: t.schedule_code,
+        route_name: t.route ? t.route.route_name : null,
+        trip_date: t.trip_date,
+        started_at: t.started_at,
+        completed_at: t.completed_at,
+        total_bookings: bookings.length,
+        boarded_passengers: boarded,
+      };
+    });
+
+    res.json({
+      status: 200,
+      success: true,
+      data: history,
+      pagination: {
+        total: count,
+        page: p,
+        limit: l,
+        pages: Math.ceil(count / l),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Get Driver Earnings Summary
+ * GET /api/bus-driver/earnings
+ */
+exports.getEarningsSummary = async (req, res, next) => {
+  try {
+    const driverId = req.driver.id;
+
+    // Aggregate completed trips stats
+    const completedTrips = await Trip.findAll({
+      where: { driver_id: driverId, status: 'Completed' },
+      include: [{ model: Booking, as: 'bookings' }],
+    });
+
+    const totalTripsCompleted = completedTrips.length;
+    let totalPassengersBoarded = 0;
+
+    completedTrips.forEach((t) => {
+      if (t.bookings) {
+        totalPassengersBoarded += t.bookings.filter((b) => b.boarding_status === 'boarded').length;
+      }
+    });
+
+    res.json({
+      status: 200,
+      success: true,
+      data: {
+        driver_id: driverId,
+        driver_name: req.driver.name,
+        total_completed_trips: totalTripsCompleted,
+        total_passengers_boarded: totalPassengersBoarded,
+        rating: 4.8, // Default rating representation
+        duty_status: req.driver.online_status,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};

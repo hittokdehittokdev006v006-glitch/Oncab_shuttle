@@ -1,0 +1,49 @@
+'use strict';
+
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
+
+const Booking = sequelize.define('Booking', {
+  id: { type: DataTypes.INTEGER.UNSIGNED, primaryKey: true, autoIncrement: true },
+  booking_reference: { type: DataTypes.STRING(30), allowNull: false, unique: true },
+  trip_id: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+  passenger_id: { type: DataTypes.INTEGER.UNSIGNED, defaultValue: null },
+  origin_stop_id: { type: DataTypes.INTEGER.UNSIGNED, defaultValue: null },
+  destination_stop_id: { type: DataTypes.INTEGER.UNSIGNED, defaultValue: null },
+  coupon_id: { type: DataTypes.INTEGER.UNSIGNED, defaultValue: null },
+  travel_date: { type: DataTypes.DATEONLY, allowNull: false },
+  seat_numbers: { type: DataTypes.JSON, defaultValue: null },
+  total_seats: { type: DataTypes.INTEGER, defaultValue: 1 },
+  passenger_name: { type: DataTypes.STRING(100), allowNull: false },
+  passenger_mobile: { type: DataTypes.STRING(20), allowNull: false },
+  passenger_email: { type: DataTypes.STRING(150), defaultValue: null },
+  total_fare: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0 },
+  discount_amount: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0 },
+  final_amount: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0 },
+  payment_status: { type: DataTypes.ENUM('pending', 'paid', 'failed', 'refunded', 'partial_refund'), defaultValue: 'pending' },
+  payment_method: { type: DataTypes.STRING(50), defaultValue: null },
+  transaction_id: { type: DataTypes.STRING(100), defaultValue: null },
+  booking_status: { type: DataTypes.ENUM('confirmed', 'cancelled', 'completed', 'pending'), defaultValue: 'pending' },
+  boarding_pass_code: { type: DataTypes.STRING(20), defaultValue: null },
+  boarding_pin: { type: DataTypes.STRING(10), defaultValue: null },
+  boarding_time: { type: DataTypes.TIME, defaultValue: null },
+  boarded_at: { type: DataTypes.DATE, defaultValue: null },
+  boarding_status: { type: DataTypes.ENUM('not_boarded', 'boarded', 'no_show'), defaultValue: 'not_boarded' },
+  dropped_at: { type: DataTypes.DATE, defaultValue: null },
+  special_requests: { type: DataTypes.TEXT, defaultValue: null },
+  qr_token: { type: DataTypes.STRING(255), defaultValue: null },
+  cancellation_reason: { type: DataTypes.TEXT, defaultValue: null },
+  cancelled_at: { type: DataTypes.DATE, defaultValue: null },
+  cancelled_by: { type: DataTypes.INTEGER.UNSIGNED, defaultValue: null },
+  status: { type: DataTypes.ENUM('Active', 'Cancelled', 'Completed', 'Payment Failed'), defaultValue: 'Active' },
+  deleted_at: { type: DataTypes.DATE, defaultValue: null },
+}, {
+  tableName: 'bookings',
+  timestamps: true,
+  createdAt: 'created_at',
+  updatedAt: 'updated_at',
+  paranoid: true,
+  deletedAt: 'deleted_at',
+});
+
+module.exports = Booking;

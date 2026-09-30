@@ -1,0 +1,142 @@
+'use strict';
+
+const { Op, fn, col, literal } = require('sequelize');
+const { Booking, Trip, Driver, Vehicle, Passenger, Payment, Refund, Route, AuditLog } = require('../models');
+const sequelize = require('../config/database');
+
+// ── Dashboard Stats ────────────────────────────────────────
+exports.stats = async (req, res, next) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const thisMonth = new Date(); thisMonth.setDate(1);
+
+    const [
+      totalTrips, todayTrips, activeTrips,
+      totalBookings, todayBookings, confirmedBookings,
+      totalDrivers, activeDrivers,
+      totalVehicles, activeVehicles,
+      totalPassengers,
+      totalRevenue, todayRevenue,
+      pendingRefunds, cancelledBookings,
+    ] = await Promise.all([
+      Trip.count(),
+      Trip.count({ where: { trip_date: today } }),
+      Trip.count({ where: { status: 'Active' } }),
+      Booking.count(),
+      Booking.count({ where: { created_at: { [Op.gte]: new Date(today) } } }),
+      Booking.count({ where: { booking_status: 'confirmed' } }),
+      Driver.count(),
+      Driver.count({ where: { status: 'Approve', block_status: 'Unblock' } }),
+      Vehicle.count(),
+      Vehicle.count({ where: { status: 'Active' } }),
+      Passenger.count(),
+      Payment.sum('amount', { where: { status: 'captured' } }),
+      Payment.sum('amount', { where: { status: 'captured', created_at: { [Op.gte]: new Date(today) } } }),
+      Refund.count({ where: { status: 'pending' } }),
+      Booking.count({ where: { booking_status: 'cancelled' } }),
+    ]);
+
+    // Monthly revenue (last 6 months)
+    const revenueChart = await Payment.findAll({
+      attributes: [
+        [fn('DATE_FORMAT', col('created_at'), '%Y-%m'), 'month'],
+        [fn('SUM', col('amount')), 'revenue'],
+        [fn('COUNT', col('id')), 'transactions'],
+      ],
+      where: { status: 'captured', created_at: { [Op.gte]: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000) } },
+      group: [literal('month')],
+      order: [[literal('month'), 'ASC']],
+    });
+
+    // Bookings by status
+    const bookingsByStatus = await Booking.findAll({
+      attributes: ['booking_status', [fn('COUNT', col('id')), 'count']],
+      group: ['booking_status'],
+    });
+
+    // Recent bookings
+    const recentBookings = await Booking.findAll({
+      limit: 10,
+      order: [['created_at', 'DESC']],
+      include: [
+        { model: Trip, as: 'trip', attributes: ['id', 'schedule_code'] },
+        { model: Passenger, as: 'passenger', attributes: ['id', 'name', 'mobile'] },
+      ],
+    });
+
+    // Top routes
+    const topRoutes = await Booking.findAll({
+      attributes: ['trip_id', [fn('COUNT', col('Booking.id')), 'booking_count']],
+      include: [{ model: Trip, as: 'trip', attributes: ['id', 'schedule_code'], include: [{ model: Route, as: 'route', attributes: ['id', 'route_name', 'origin_city', 'destination_city'] }] }],
+      group: ['trip_id', 'trip.id', 'trip.schedule_code', 'trip.route.id', 'trip.route.route_name', 'trip.route.origin_city', 'trip.route.destination_city'],
+      order: [[literal('booking_count'), 'DESC']],
+      limit: 5,
+      where: { booking_status: 'confirmed' },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        summary: {
+          trips: { total: totalTrips, today: todayTrips, active: activeTrips },
+          bookings: { total: totalBookings, today: todayBookings, confirmed: confirmedBookings, cancelled: cancelledBookings },
+          drivers: { total: totalDrivers, active: activeDrivers },
+          vehicles: { total: totalVehicles, active: activeVehicles },
+          passengers: { total: totalPassengers },
+          revenue: { total: totalRevenue || 0, today: todayRevenue || 0 },
+          refunds: { pending: pendingRefunds },
+        },
+        charts: { revenue: revenueChart, bookingsByStatus },
+        recentBookings,
+        topRoutes,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── Revenue Report ─────────────────────────────────────────
+exports.revenueReport = async (req, res, next) => {
+  try {
+    const { from_date, to_date, group_by = 'day' } = req.query;
+    const format = group_by === 'month' ? '%Y-%m' : group_by === 'year' ? '%Y' : '%Y-%m-%d';
+    const where = { status: 'captured' };
+    if (from_date && to_date) where.created_at = { [Op.between]: [new Date(from_date), new Date(to_date + ' 23:59:59')] };
+
+    const data = await Payment.findAll({
+      attributes: [
+        [fn('DATE_FORMAT', col('created_at'), format), 'period'],
+        [fn('SUM', col('amount')), 'revenue'],
+        [fn('COUNT', col('id')), 'transactions'],
+      ],
+      where,
+      group: [literal('period')],
+      order: [[literal('period'), 'ASC']],
+    });
+
+    const total = data.reduce((acc, r) => acc + parseFloat(r.get('revenue') || 0), 0);
+    res.json({ success: true, data: { report: data, total } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── Audit Logs ─────────────────────────────────────────────
+exports.auditLogs = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 20, module, action, user_id, from_date, to_date } = req.query;
+    const p = Math.max(1, parseInt(page));
+    const l = Math.min(100, Math.max(1, parseInt(limit)));
+    const where = {};
+    if (module) where.module = module;
+    if (action) where.action = action;
+    if (user_id) where.user_id = user_id;
+    if (from_date && to_date) where.created_at = { [Op.between]: [new Date(from_date), new Date(to_date + ' 23:59:59')] };
+
+    const { count, rows } = await AuditLog.findAndCountAll({ where, offset: (p - 1) * l, limit: l, order: [['created_at', 'DESC']] });
+    res.json({ success: true, data: rows, pagination: { total: count, page: p, limit: l, pages: Math.ceil(count / l) } });
+  } catch (err) {
+    next(err);
+  }
+};

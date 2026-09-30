@@ -1,0 +1,25 @@
+-- SQL Schema Additions & Verification Script for fix_oncab
+-- Generated for ShuttleFlow Bus Operator Dashboard
+-- Run this script in MySQL database manager to ensure all dynamic dashboard columns are present.
+
+-- 1. Verify/Add dynamic column for scheduled passenger seats in bus_schedules
+ALTER TABLE `bus_schedules` 
+ADD COLUMN IF NOT EXISTS `booked_seats` INT(11) DEFAULT 0 AFTER `seat_capacity`;
+
+-- 2. Verify/Add dynamic trip tracking timestamp columns
+ALTER TABLE `bus_schedules` 
+ADD COLUMN IF NOT EXISTS `started_at` DATETIME NULL DEFAULT NULL AFTER `booked_seats`,
+ADD COLUMN IF NOT EXISTS `completed_at` DATETIME NULL DEFAULT NULL AFTER `started_at`;
+
+-- 3. Verify boarding QR token and pin columns in bus_bookings
+ALTER TABLE `bus_bookings` 
+ADD COLUMN IF NOT EXISTS `qr_token` VARCHAR(255) NULL DEFAULT NULL AFTER `special_requests`,
+ADD COLUMN IF NOT EXISTS `boarding_pin` VARCHAR(10) NULL DEFAULT NULL AFTER `boarding_pass_code`;
+
+-- 4. Verify driver bank account edit status tracking
+ALTER TABLE `driver_bank_accounts` 
+ADD COLUMN IF NOT EXISTS `edit_status` ENUM('Edit Requested', 'Edit Approved', 'Details Pending') NULL DEFAULT NULL AFTER `status`;
+
+-- 5. Indexing for fast dynamic route lookup
+CREATE INDEX IF NOT EXISTS `idx_bus_schedules_route` ON `bus_schedules` (`route_id`, `status`);
+CREATE INDEX IF NOT EXISTS `idx_bus_bookings_schedule` ON `bus_bookings` (`schedule_id`, `booking_status`);

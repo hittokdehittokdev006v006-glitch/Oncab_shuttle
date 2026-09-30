@@ -1,0 +1,42 @@
+{
+  "name": "oncab-shuttle-backend",
+  "version": "1.0.0",
+  "description": "OncabShuttle Booking Management System - Backend API",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "dev:frontend": "cd src/frontend && npm run dev",
+    "build:frontend": "cd src/frontend && npm run build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "shuttle",
+    "booking",
+    "management",
+    "express",
+    "sequelize",
+    "mysql"
+  ],
+  "author": "OncabShuttle",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.3",
+    "express": "^5.2.1",
+    "express-rate-limit": "^7.5.0",
+    "express-validator": "^7.2.1",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.3",
+    "morgan": "^1.10.0",
+    "multer": "^2.0.0",
+    "mysql2": "^3.24.4",
+    "sequelize": "^6.37.7",
+    "uuid": "^11.0.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
