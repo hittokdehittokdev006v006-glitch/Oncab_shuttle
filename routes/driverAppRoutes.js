@@ -3,6 +3,7 @@
 const express = require('express');
 const router = express.Router();
 const driverAppController = require('../controllers/driverAppController');
+const busDriverAssignmentController = require('../controllers/busDriverAssignmentController');
 const { authenticateDriver } = require('../middleware/driverAuth');
 
 // ── 1. AUTHENTICATION (PUBLIC) ──────────────────────────────
@@ -23,17 +24,22 @@ router.patch('/duty-status', driverAppController.toggleDutyStatus);
 
 // Assigned Trips & Schedule
 router.get('/assigned-trips', driverAppController.getAssignedTrips);
-router.get('/my-assignments', driverAppController.getAssignedTrips); // Alias
-router.post('/my-assignments', driverAppController.getAssignedTrips); // Alias for POST
+router.get('/my-assignments', busDriverAssignmentController.getMyAssignments);
+router.post('/available-schedules', busDriverAssignmentController.getAvailableSchedules);
+router.post('/accept-assignment', busDriverAssignmentController.acceptAssignment);
+router.post('/my-assignments', busDriverAssignmentController.getMyAssignments);
+router.post('/assignments/:id/start', busDriverAssignmentController.startAssignment);
+router.post('/assignments/:id/complete', busDriverAssignmentController.completeAssignment);
+router.post('/assignments/:id/cancel', busDriverAssignmentController.cancelAssignment);
 router.get('/trips/:id', driverAppController.getTripDetails);
 router.get('/trips/:id/manifest', driverAppController.getPassengerManifest);
 
 // Trip Action Operations
 router.post('/trips/:id/start', driverAppController.startTrip);
-router.post('/start-trip', driverAppController.startTrip); // Legacy endpoint format
+router.post('/start-trip', busDriverAssignmentController.startTrip); // Assignment workflow compatibility
 
 router.post('/trips/:id/complete', driverAppController.completeTrip);
-router.post('/complete-trip', driverAppController.completeTrip); // Legacy endpoint format
+router.post('/complete-trip', busDriverAssignmentController.completeTrip); // Assignment workflow compatibility
 
 // Ticket Boarding Verification Flow
 router.post('/scan-boarding-pass', driverAppController.scanBoardingPass);

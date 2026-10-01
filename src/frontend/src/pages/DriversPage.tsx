@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus, Edit2, Trash2, Phone, Mail, MapPin, Upload, Image, CheckCircle2, X, Eye, FileText } from 'lucide-react';
-import { driversAPI } from '../services/api';
+import { driversAPI, vehiclesAPI } from '../services/api';
 import { Card, Table, Tr, Td, Pagination, SearchInput, Button, Select, StatusBadge, Modal, ConfirmDialog, LoadingState, ErrorState, EmptyState, Badge } from '../components/ui';
 
 interface Driver {
@@ -9,6 +9,9 @@ interface Driver {
   email: string;
   mobile: string;
   driver_user_id: string;
+  vehicle_type_id?: number | null;
+  is_bus_driver?: boolean;
+  preferred_bus_type_id?: number | null;
   status: string;
   online_status: string;
   block_status: string;
@@ -41,6 +44,7 @@ export const DriversPage: React.FC<DriversPageProps> = ({ onNotify }) => {
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, pages: 1, limit: 15 });
+  const [busTypes, setBusTypes] = useState<Array<{ id: number; name: string }>>([]);
   const latestFetchId = useRef(0);
 
   const [showModal, setShowModal] = useState(false);
@@ -65,6 +69,8 @@ export const DriversPage: React.FC<DriversPageProps> = ({ onNotify }) => {
     pan_img: '',
     address: '',
     status: 'Pending',
+    is_bus_driver: false,
+    preferred_bus_type_id: '',
   });
 
   const fetchDrivers = useCallback(async () => {
@@ -89,6 +95,12 @@ export const DriversPage: React.FC<DriversPageProps> = ({ onNotify }) => {
   }, [fetchDrivers]);
 
   useEffect(() => {
+    vehiclesAPI.busTypes()
+      .then((response) => setBusTypes(response.data.data || []))
+      .catch(() => setBusTypes([]));
+  }, []);
+
+  useEffect(() => {
     setPage(1);
   }, [search, statusFilter]);
 
@@ -105,6 +117,8 @@ export const DriversPage: React.FC<DriversPageProps> = ({ onNotify }) => {
       pan_img: '',
       address: '',
       status: 'Pending',
+      is_bus_driver: false,
+      preferred_bus_type_id: '',
     });
     setShowModal(true);
   };
@@ -122,6 +136,8 @@ export const DriversPage: React.FC<DriversPageProps> = ({ onNotify }) => {
       pan_img: d.details?.smart_card_img || '',
       address: d.address || '',
       status: d.status || 'Pending',
+      is_bus_driver: Boolean(d.is_bus_driver),
+      preferred_bus_type_id: d.preferred_bus_type_id ? String(d.preferred_bus_type_id) : '',
     });
     setShowModal(true);
   };
@@ -158,6 +174,10 @@ export const DriversPage: React.FC<DriversPageProps> = ({ onNotify }) => {
     e.preventDefault();
     if (!form.name || !form.mobile) {
       onNotify('Full Name and Mobile are required', 'error');
+      return;
+    }
+    if (form.is_bus_driver && !form.preferred_bus_type_id) {
+      onNotify('Select a preferred bus type for this bus driver', 'error');
       return;
     }
     setSaving(true);
@@ -499,6 +519,36 @@ export const DriversPage: React.FC<DriversPageProps> = ({ onNotify }) => {
                     className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
+              </div>
+
+              <div className="rounded-lg border border-slate-700/70 bg-slate-800/40 p-3.5 space-y-3">
+                <label className="flex items-center gap-2 text-sm text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={form.is_bus_driver}
+                    onChange={(event) => setForm({
+                      ...form,
+                      is_bus_driver: event.target.checked,
+                      preferred_bus_type_id: event.target.checked ? form.preferred_bus_type_id : '',
+                    })}
+                    className="h-4 w-4 accent-cyan-500"
+                  />
+                  Registered as bus driver
+                </label>
+                {form.is_bus_driver && (
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-300">Preferred Bus Type</label>
+                    <select
+                      required
+                      value={form.preferred_bus_type_id}
+                      onChange={(event) => setForm({ ...form, preferred_bus_type_id: event.target.value })}
+                      className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500"
+                    >
+                      <option value="">Select bus type</option>
+                      {busTypes.map((busType) => <option key={busType.id} value={busType.id}>{busType.name}</option>)}
+                    </select>
+                  </div>
+                )}
               </div>
 
               {/* Gender & Approval Status */}

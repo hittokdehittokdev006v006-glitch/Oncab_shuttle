@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Sep 30, 2026 at 01:57 PM
+-- Generation Time: Oct 01, 2026 at 06:50 AM
 -- Server version: 8.0.43-0ubuntu0.22.04.2
 -- PHP Version: 8.1.7-1ubuntu3.5
 
@@ -50,7 +50,7 @@ CREATE TABLE `admin_users` (
 --
 
 INSERT INTO `admin_users` (`id`, `role_id`, `name`, `email`, `password`, `phone`, `avatar`, `is_active`, `last_login_at`, `password_reset_token`, `password_reset_expires`, `refresh_token`, `deleted_at`, `created_at`, `updated_at`) VALUES
-(1, 1, 'System Administrator', 'admin@oncabshuttle.com', '$2b$12$HswfqrOL8qn71Q99TWRE8.w/AY5oGqDFNFsNDVKgf7GhfIyMJfIFe', '+91 98765 00001', NULL, 1, '2026-09-30 13:31:07', NULL, NULL, 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiaWF0IjoxNzkwNzc1OTY4LCJleHAiOjE3OTEzODA3Njh9.0tyS-LOT7-kAXLNUI995GSTILXbGjDWQJGDOMvGfOns', NULL, '2026-09-28 12:35:58', '2026-09-30 13:46:08'),
+(1, 1, 'System Administrator', 'admin@oncabshuttle.com', '$2b$12$HswfqrOL8qn71Q99TWRE8.w/AY5oGqDFNFsNDVKgf7GhfIyMJfIFe', '+91 98765 00001', NULL, 1, '2026-10-01 06:42:16', NULL, NULL, 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiaWF0IjoxNzkwODM2OTM2LCJleHAiOjE3OTE0NDE3MzZ9.CTkVlzf5xYDCTiCilHp_ENFaBbMgvKBvrChOfTFYSMU', NULL, '2026-09-28 12:35:58', '2026-10-01 06:42:16'),
 (2, 2, 'Fleet Dispatcher', 'operator@oncabshuttle.com', '$2b$12$v4q3sfRgHqRbM7pmOFTCie2NQ1wFbKMtgiLGuGYNDXywLzPXYOX7W', '+91 98765 00002', NULL, 1, '2026-09-30 11:54:44', NULL, NULL, NULL, NULL, '2026-09-28 12:35:58', '2026-09-30 11:54:53');
 
 -- --------------------------------------------------------
@@ -160,7 +160,10 @@ INSERT INTO `audit_logs` (`id`, `user_id`, `user_type`, `user_name`, `action`, `
 (76, 1, 'admin', 'System Administrator', 'login', 'auth', NULL, NULL, NULL, NULL, '223.181.52.7', NULL, 'User logged in', 'success', '2026-09-30 13:15:49'),
 (77, 1, 'admin', 'System Administrator', 'create', 'drivers', 'Driver', 2, NULL, '{\"name\":\"fghfgh\",\"mobile\":\"7029725978\"}', '223.181.52.7', NULL, 'Created driver fghfgh', 'success', '2026-09-30 13:18:36'),
 (78, 1, 'admin', 'System Administrator', 'login', 'auth', NULL, NULL, NULL, NULL, '223.181.52.7', NULL, 'User logged in', 'success', '2026-09-30 13:26:38'),
-(79, 1, 'admin', 'System Administrator', 'login', 'auth', NULL, NULL, NULL, NULL, '223.181.52.7', NULL, 'User logged in', 'success', '2026-09-30 13:31:07');
+(79, 1, 'admin', 'System Administrator', 'login', 'auth', NULL, NULL, NULL, NULL, '223.181.52.7', NULL, 'User logged in', 'success', '2026-09-30 13:31:07'),
+(80, 1, 'admin', 'System Administrator', 'login', 'auth', NULL, NULL, NULL, NULL, '223.181.50.160', NULL, 'User logged in', 'success', '2026-10-01 06:36:00'),
+(81, 1, 'admin', 'System Administrator', 'login', 'auth', NULL, NULL, NULL, NULL, '223.181.50.160', NULL, 'User logged in', 'success', '2026-10-01 06:42:16'),
+(82, 1, 'admin', 'System Administrator', 'create', 'trips', 'Trip', 2, NULL, '{\"schedule_code\":\"SCH-2026-7070\",\"trip_date\":\"2026-10-01\"}', '223.181.50.160', NULL, 'Created trip SCH-2026-7070', 'success', '2026-10-01 06:48:15');
 
 -- --------------------------------------------------------
 
@@ -205,6 +208,100 @@ CREATE TABLE `bookings` (
   `created_at` datetime NOT NULL,
   `updated_at` datetime NOT NULL
 ) ;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `bus_driver_assignments`
+--
+
+CREATE TABLE `bus_driver_assignments` (
+  `id` bigint UNSIGNED NOT NULL,
+  `schedule_id` bigint UNSIGNED NOT NULL,
+  `driver_id` bigint UNSIGNED NOT NULL,
+  `assignment_date` date NOT NULL,
+  `reporting_time` time NOT NULL,
+  `status` enum('assigned','started','completed','cancelled') DEFAULT 'assigned',
+  `start_odometer` decimal(10,2) DEFAULT NULL,
+  `end_odometer` decimal(10,2) DEFAULT NULL,
+  `notes` text,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  `car_id` bigint UNSIGNED DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `bus_routes`
+--
+
+CREATE TABLE `bus_routes` (
+  `id` bigint UNSIGNED NOT NULL,
+  `route_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `route_code` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `origin_city` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `destination_city` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `route_stops` json DEFAULT NULL,
+  `total_distance` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `estimated_duration` int NOT NULL DEFAULT '0',
+  `status` enum('Active','Inactive') COLLATE utf8mb4_unicode_ci DEFAULT 'Active',
+  `description` text COLLATE utf8mb4_unicode_ci,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `bus_schedules`
+--
+
+CREATE TABLE `bus_schedules` (
+  `id` bigint UNSIGNED NOT NULL,
+  `route_id` bigint UNSIGNED NOT NULL,
+  `bus_type_id` int UNSIGNED NOT NULL,
+  `schedule_code` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `bus_number` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `departure_time` time NOT NULL,
+  `arrival_time` time NOT NULL,
+  `operating_days` set('monday','tuesday','wednesday','thursday','friday','saturday','sunday') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `base_fare` decimal(10,2) NOT NULL,
+  `fare_per_km` decimal(10,2) NOT NULL,
+  `status` enum('Active','Inactive','Cancelled') COLLATE utf8mb4_unicode_ci DEFAULT 'Active',
+  `valid_from` date DEFAULT NULL,
+  `valid_until` date DEFAULT NULL,
+  `driver_id` int UNSIGNED DEFAULT NULL,
+  `car_id` bigint UNSIGNED DEFAULT NULL,
+  `trip_date` date DEFAULT NULL,
+  `seat_capacity` int NOT NULL DEFAULT '30',
+  `booked_seats` int NOT NULL DEFAULT '0',
+  `started_at` datetime DEFAULT NULL,
+  `completed_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `bus_stops`
+--
+
+CREATE TABLE `bus_stops` (
+  `id` bigint UNSIGNED NOT NULL,
+  `route_id` bigint UNSIGNED NOT NULL,
+  `stop_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `latitude` decimal(10,8) NOT NULL DEFAULT '0.00000000',
+  `longitude` decimal(11,8) NOT NULL DEFAULT '0.00000000',
+  `stop_sequence` int NOT NULL,
+  `stop_code` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `address` text COLLATE utf8mb4_unicode_ci,
+  `landmark` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `status` enum('Active','Inactive') COLLATE utf8mb4_unicode_ci DEFAULT 'Active',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -279,6 +376,8 @@ CREATE TABLE `drivers` (
   `zone_id` int UNSIGNED DEFAULT NULL,
   `driver_type_id` int UNSIGNED DEFAULT NULL,
   `vehicle_type_id` int UNSIGNED DEFAULT NULL,
+  `is_bus_driver` tinyint(1) NOT NULL DEFAULT '0',
+  `preferred_bus_type_id` int UNSIGNED DEFAULT NULL,
   `driver_user_id` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
   `email` varchar(150) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
@@ -304,9 +403,9 @@ CREATE TABLE `drivers` (
 -- Dumping data for table `drivers`
 --
 
-INSERT INTO `drivers` (`id`, `city_id`, `zone_id`, `driver_type_id`, `vehicle_type_id`, `driver_user_id`, `name`, `email`, `mobile`, `aadhar`, `pan`, `address`, `sex`, `device_id`, `photo`, `referral`, `created_by`, `block_status`, `complete_status`, `online_status`, `status`, `deleted_at`, `created_at`, `updated_at`) VALUES
-(1, NULL, NULL, NULL, NULL, NULL, 'Bus Driver', 'driver@gmail.com', '9874589658', '789456987412', 'ABCVF3465D', 'HIIvb nvbnjh', 'Male', 'elIi0rouRHWD37YACqYrWU:APA91bEBeoRt5kyFOQr9U23Ln4-GS25Tz40bWDzOGgSV_tfu1cm7lL9K-9GVB98_1FOs2FJhdsdAU5sZQN-O_b6evHBz87kfFUR4Ogni5kQudyfOAQMcfLo', NULL, NULL, 'System Administrator', 'Unblock', 'Incomplete', 'Offline', 'Approve', NULL, '2026-09-28 12:45:49', '2026-09-30 13:32:03'),
-(2, NULL, NULL, NULL, NULL, NULL, 'fghfgh', '', '7029725978', '515677663779', 'ANCD2332', 'fxccvxcvxcv', 'Male', NULL, NULL, NULL, 'System Administrator', 'Unblock', 'Incomplete', 'Offline', 'Approve', NULL, '2026-09-30 13:18:36', '2026-09-30 13:18:36');
+INSERT INTO `drivers` (`id`, `city_id`, `zone_id`, `driver_type_id`, `vehicle_type_id`, `is_bus_driver`, `preferred_bus_type_id`, `driver_user_id`, `name`, `email`, `mobile`, `aadhar`, `pan`, `address`, `sex`, `device_id`, `photo`, `referral`, `created_by`, `block_status`, `complete_status`, `online_status`, `status`, `deleted_at`, `created_at`, `updated_at`) VALUES
+(1, NULL, NULL, NULL, NULL, 0, NULL, NULL, 'Bus Driver', 'driver@gmail.com', '9874589658', '789456987412', 'ABCVF3465D', 'HIIvb nvbnjh', 'Male', 'bus_android_device', NULL, NULL, 'System Administrator', 'Unblock', 'Incomplete', 'Offline', 'Approve', NULL, '2026-09-28 12:45:49', '2026-10-01 06:43:12'),
+(2, NULL, NULL, NULL, NULL, 0, NULL, NULL, 'fghfgh', '', '7029725978', '515677663779', 'ANCD2332', 'fxccvxcvxcv', 'Male', NULL, NULL, NULL, 'System Administrator', 'Unblock', 'Incomplete', 'Offline', 'Approve', NULL, '2026-09-30 13:18:36', '2026-09-30 13:18:36');
 
 -- --------------------------------------------------------
 
@@ -737,7 +836,8 @@ CREATE TABLE `trips` (
 --
 
 INSERT INTO `trips` (`id`, `route_id`, `bus_type_id`, `schedule_code`, `departure_time`, `arrival_time`, `operating_days`, `base_fare`, `fare_per_km`, `seat_capacity`, `booked_seats`, `trip_date`, `valid_from`, `valid_until`, `driver_id`, `vehicle_id`, `started_at`, `completed_at`, `status`, `notes`, `deleted_at`, `created_at`, `updated_at`) VALUES
-(1, 1, 1, 'SCH-2026-2094', '08:00:00', '09:30:00', 'Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday', '45.00', '2.50', 0, 0, NULL, '2026-09-29', NULL, NULL, NULL, '2026-09-29 07:57:09', '2026-09-29 07:57:15', 'Completed', 'WB-56HH66-8', NULL, '2026-09-29 07:05:42', '2026-09-29 07:57:15');
+(1, 1, 1, 'SCH-2026-2094', '08:00:00', '09:30:00', 'Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday', '45.00', '2.50', 0, 0, NULL, '2026-09-29', NULL, NULL, NULL, '2026-09-29 07:57:09', '2026-09-29 07:57:15', 'Completed', 'WB-56HH66-8', NULL, '2026-09-29 07:05:42', '2026-09-29 07:57:15'),
+(2, 3, NULL, 'SCH-2026-7070', '07:30:00', NULL, NULL, '0.00', '0.00', 40, 0, '2026-10-01', NULL, NULL, 2, 2, NULL, NULL, 'Scheduled', NULL, NULL, '2026-10-01 06:48:15', '2026-10-01 06:48:15');
 
 -- --------------------------------------------------------
 
@@ -780,7 +880,7 @@ CREATE TABLE `users` (
 --
 
 INSERT INTO `users` (`id`, `city_id`, `zone_id`, `name`, `email`, `mobile`, `aadhar`, `pan`, `password`, `address`, `referral`, `referral_qrcode`, `referral_by`, `sex`, `device_id`, `photo`, `avatar`, `gallery_images`, `block_status`, `online_status`, `status`, `mail_created_at`, `first_time_login`, `remember_token`, `created_at`, `updated_at`, `complete_status`) VALUES
-(1, NULL, NULL, 'Admin', 'admin@oncab.in', NULL, NULL, NULL, '$2y$10$jyzw9C6E7YHbujG0LEHZyeo6wfQAdli6p/e5LlNGjIlRdP9E7./Fy', NULL, NULL, NULL, NULL, NULL, 'elIi0rouRHWD37YACqYrWU:APA91bEBeoRt5kyFOQr9U23Ln4-GS25Tz40bWDzOGgSV_tfu1cm7lL9K-9GVB98_1FOs2FJhdsdAU5sZQN-O_b6evHBz87kfFUR4Ogni5kQudyfOAQMcfLo', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-09-30 13:48:01', NULL),
+(1, NULL, NULL, 'Admin', 'admin@oncab.in', NULL, NULL, NULL, '$2y$10$jyzw9C6E7YHbujG0LEHZyeo6wfQAdli6p/e5LlNGjIlRdP9E7./Fy', NULL, NULL, NULL, NULL, NULL, 'elIi0rouRHWD37YACqYrWU:APA91bEBeoRt5kyFOQr9U23Ln4-GS25Tz40bWDzOGgSV_tfu1cm7lL9K-9GVB98_1FOs2FJhdsdAU5sZQN-O_b6evHBz87kfFUR4Ogni5kQudyfOAQMcfLo', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-10-01 06:06:01', NULL),
 (171, NULL, 1, 'driver', 'hittok10@gmail.com', '8100786504', NULL, NULL, NULL, NULL, 'ONCAB132095', NULL, NULL, 'Male', 'efUm95nDQZeG1b6t-c5Xaa:APA91bH7MKLkM6TqXjIitACadVDl_s-XvHsvn3gbndgDBUTlHBewRzxZOhDX4f2_-OYAIES_rEH4QCS31RuLABojWXgDYNGkqq74Kfl7p367ElZLGJWdz-A', 'https://oncab.in/control/images/driver/1785994210_6a741be2d2887_1785994210003.jpg', NULL, NULL, 'Unblock', 'Offline', NULL, NULL, NULL, NULL, '2023-06-10 15:50:46', '2026-08-06 15:10:39', NULL),
 (1291, NULL, 8, 'Driverbvvv', 'testnehal@gmail.com', '9999999999', NULL, NULL, NULL, 'Garia', 'ONCAB5582', 'https://oncab.in/control/images/qrcode/ONCAB5582.svg', NULL, 'Male', 'eqLWsspBRwOFgnV-TmXi0g:APA91bHlBFX32Ft1ajLRN_J6r6JV1S2lALF4eD6QckHbmzzsX0aUaAXYsX1JRc0kcpE7eT0OG16uuLSce_bTPWFe77JMzmrcMYFXH1OeI51RUHad2q8YoV4', 'https://oncab.in/control/images/driver/1782978660_6a461864d4b45_1782978659397.jpg', NULL, NULL, 'Unblock', 'Online', NULL, '2026-07-02 01:33:33', '3', NULL, '2026-07-02 12:59:34', '2026-09-01 14:11:36', NULL),
 (1299, NULL, NULL, 'NANDAN  BHAKTA', 'nandanbhakta45@gmail.com', '7797555457', NULL, NULL, NULL, NULL, 'ONCAB488157', NULL, NULL, NULL, 'cCfvG9cpRNKxlpKJ0lf0Lv:APA91bF_MooGdaUyJaXHpUPxHgjoYJMMrXSF8moafuVeoDjwD4mjnrF5PgPUYuWc63_S4Y53Mc-9e6FylU9WCqhysv8K7fJ3TkJ092BHyo46PN2JQu-aiA0', NULL, NULL, NULL, 'Unblock', 'Online', NULL, NULL, NULL, NULL, '2026-07-02 19:18:22', '2026-07-08 18:38:24', NULL),
@@ -7580,8 +7680,8 @@ CREATE TABLE `vehicle_documents` (
 
 INSERT INTO `vehicle_documents` (`id`, `vehicle_id`, `doc_type`, `doc_number`, `doc_img`, `issue_date`, `expiry_date`, `status`, `notes`, `created_at`, `updated_at`) VALUES
 (1, 1, 'registration', 'POL-HSDU-991', NULL, '2026-09-28', '2026-12-17', 'Valid', 'NN', '2026-09-28 13:24:47', '2026-09-28 13:24:47'),
-(2, 1, 'insurance', 'Pol-6546546', NULL, '2026-09-30', '2026-10-09', 'Valid', 'jhbhj', '2026-09-30 11:16:07', '2026-09-30 11:16:07'),
-(3, 2, 'insurance', 'yrfytr', NULL, '2026-09-30', '2026-10-10', 'Valid', NULL, '2026-09-30 12:00:27', '2026-09-30 12:00:27');
+(2, 1, 'insurance', 'Pol-6546546', '/uploads/vehicles/1/documents/insurance_1790777342985_3bbe166fcd5f.jpg', '2026-09-30', '2026-10-09', 'Valid', 'jhbhj', '2026-09-30 11:16:07', '2026-09-30 14:09:02'),
+(3, 2, 'insurance', 'yrfytr', '/uploads/vehicles/2/documents/insurance_1790777410968_4764d40191a3.jpg', '2026-09-30', '2026-10-10', 'Valid', NULL, '2026-09-30 12:00:27', '2026-09-30 14:10:10');
 
 --
 -- Indexes for dumped tables
@@ -7614,6 +7714,39 @@ ALTER TABLE `bookings`
   ADD KEY `coupon_id` (`coupon_id`);
 
 --
+-- Indexes for table `bus_driver_assignments`
+--
+ALTER TABLE `bus_driver_assignments`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `bus_driver_assignment_schedule_date_unique` (`schedule_id`,`assignment_date`),
+  ADD KEY `bus_driver_assignments_schedule_id_foreign` (`schedule_id`),
+  ADD KEY `bus_driver_assignments_driver_id_foreign` (`driver_id`);
+
+--
+-- Indexes for table `bus_routes`
+--
+ALTER TABLE `bus_routes`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `bus_routes_route_code_unique` (`route_code`);
+
+--
+-- Indexes for table `bus_schedules`
+--
+ALTER TABLE `bus_schedules`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `bus_schedules_schedule_code_unique` (`schedule_code`),
+  ADD KEY `bus_schedules_route_status_idx` (`route_id`,`status`),
+  ADD KEY `bus_schedules_bus_type_status_idx` (`bus_type_id`,`status`),
+  ADD KEY `bus_schedules_driver_fk` (`driver_id`);
+
+--
+-- Indexes for table `bus_stops`
+--
+ALTER TABLE `bus_stops`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `bus_stops_route_sequence_idx` (`route_id`,`stop_sequence`);
+
+--
 -- Indexes for table `bus_types`
 --
 ALTER TABLE `bus_types`
@@ -7631,7 +7764,8 @@ ALTER TABLE `coupons`
 -- Indexes for table `drivers`
 --
 ALTER TABLE `drivers`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `drivers_preferred_bus_type_idx` (`preferred_bus_type_id`);
 
 --
 -- Indexes for table `driver_details`
@@ -7756,8 +7890,7 @@ ALTER TABLE `vehicles`
 --
 ALTER TABLE `vehicle_documents`
   ADD PRIMARY KEY (`id`),
-  ADD KEY `vehicle_id` (`vehicle_id`),
-  ADD UNIQUE KEY `vehicle_documents_vehicle_type_unique` (`vehicle_id`, `doc_type`);
+  ADD KEY `vehicle_id` (`vehicle_id`);
 
 --
 -- AUTO_INCREMENT for dumped tables
@@ -7780,6 +7913,30 @@ ALTER TABLE `audit_logs`
 --
 ALTER TABLE `bookings`
   MODIFY `id` int UNSIGNED NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `bus_driver_assignments`
+--
+ALTER TABLE `bus_driver_assignments`
+  MODIFY `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `bus_routes`
+--
+ALTER TABLE `bus_routes`
+  MODIFY `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `bus_schedules`
+--
+ALTER TABLE `bus_schedules`
+  MODIFY `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `bus_stops`
+--
+ALTER TABLE `bus_stops`
+  MODIFY `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `bus_types`
@@ -7869,7 +8026,7 @@ ALTER TABLE `system_settings`
 -- AUTO_INCREMENT for table `trips`
 --
 ALTER TABLE `trips`
-  MODIFY `id` int UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `users`
@@ -7908,6 +8065,26 @@ ALTER TABLE `bookings`
   ADD CONSTRAINT `bookings_ibfk_3` FOREIGN KEY (`origin_stop_id`) REFERENCES `stops` (`id`) ON UPDATE CASCADE,
   ADD CONSTRAINT `bookings_ibfk_4` FOREIGN KEY (`destination_stop_id`) REFERENCES `stops` (`id`) ON UPDATE CASCADE,
   ADD CONSTRAINT `bookings_ibfk_5` FOREIGN KEY (`coupon_id`) REFERENCES `coupons` (`id`) ON UPDATE CASCADE;
+
+--
+-- Constraints for table `bus_schedules`
+--
+ALTER TABLE `bus_schedules`
+  ADD CONSTRAINT `bus_schedules_bus_type_fk` FOREIGN KEY (`bus_type_id`) REFERENCES `bus_types` (`id`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `bus_schedules_driver_fk` FOREIGN KEY (`driver_id`) REFERENCES `drivers` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  ADD CONSTRAINT `bus_schedules_route_fk` FOREIGN KEY (`route_id`) REFERENCES `bus_routes` (`id`) ON UPDATE CASCADE;
+
+--
+-- Constraints for table `bus_stops`
+--
+ALTER TABLE `bus_stops`
+  ADD CONSTRAINT `bus_stops_route_fk` FOREIGN KEY (`route_id`) REFERENCES `bus_routes` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Constraints for table `drivers`
+--
+ALTER TABLE `drivers`
+  ADD CONSTRAINT `drivers_preferred_bus_type_fk` FOREIGN KEY (`preferred_bus_type_id`) REFERENCES `bus_types` (`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 --
 -- Constraints for table `driver_details`

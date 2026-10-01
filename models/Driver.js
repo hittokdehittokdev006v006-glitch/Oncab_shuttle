@@ -9,6 +9,8 @@ const Driver = sequelize.define('Driver', {
   zone_id: { type: DataTypes.INTEGER.UNSIGNED, defaultValue: null },
   driver_type_id: { type: DataTypes.INTEGER.UNSIGNED, defaultValue: null },
   vehicle_type_id: { type: DataTypes.INTEGER.UNSIGNED, defaultValue: null },
+  is_bus_driver: { type: DataTypes.BOOLEAN, defaultValue: false },
+  preferred_bus_type_id: { type: DataTypes.INTEGER.UNSIGNED, defaultValue: null },
   driver_user_id: { type: DataTypes.STRING(50), defaultValue: null },
   name: { type: DataTypes.STRING(100), allowNull: false },
   email: { type: DataTypes.STRING(150), defaultValue: null },

@@ -11,6 +11,10 @@ const DriverDetail = require('./DriverDetail');
 const Vehicle = require('./Vehicle');
 const VehicleDocument = require('./VehicleDocument');
 const BusType = require('./BusType');
+const BusRoute = require('./BusRoute');
+const BusStop = require('./BusStop');
+const BusSchedule = require('./BusSchedule');
+const BusDriverAssignment = require('./BusDriverAssignment');
 const Route = require('./Route');
 const Stop = require('./Stop');
 const Trip = require('./Trip');
@@ -52,6 +56,18 @@ Vehicle.belongsTo(Driver, { foreignKey: 'driver_id', as: 'driver' });
 // ─── Vehicle Associations ────────────────────────────────
 Vehicle.belongsTo(BusType, { foreignKey: 'bus_type_id', as: 'bus_type' });
 BusType.hasMany(Vehicle, { foreignKey: 'bus_type_id', as: 'vehicles' });
+
+// ─── Bus Schedule & Driver Assignment ────────────────────
+BusRoute.hasMany(BusStop, { foreignKey: 'route_id', as: 'stops' });
+BusStop.belongsTo(BusRoute, { foreignKey: 'route_id', as: 'route' });
+BusRoute.hasMany(BusSchedule, { foreignKey: 'route_id', as: 'schedules' });
+BusSchedule.belongsTo(BusRoute, { foreignKey: 'route_id', as: 'route' });
+BusType.hasMany(BusSchedule, { foreignKey: 'bus_type_id', as: 'bus_schedules' });
+BusSchedule.belongsTo(BusType, { foreignKey: 'bus_type_id', as: 'bus_type' });
+BusSchedule.hasMany(BusDriverAssignment, { foreignKey: 'schedule_id', as: 'driverAssignments' });
+BusDriverAssignment.belongsTo(BusSchedule, { foreignKey: 'schedule_id', as: 'schedule' });
+Driver.hasMany(BusDriverAssignment, { foreignKey: 'driver_id', as: 'busAssignments' });
+BusDriverAssignment.belongsTo(Driver, { foreignKey: 'driver_id', as: 'driver' });
 
 Vehicle.hasMany(VehicleDocument, { foreignKey: 'vehicle_id', as: 'documents', onDelete: 'CASCADE' });
 VehicleDocument.belongsTo(Vehicle, { foreignKey: 'vehicle_id', as: 'vehicle' });
@@ -120,6 +136,10 @@ module.exports = {
   Vehicle,
   VehicleDocument,
   BusType,
+  BusRoute,
+  BusStop,
+  BusSchedule,
+  BusDriverAssignment,
   Route,
   Stop,
   Trip,

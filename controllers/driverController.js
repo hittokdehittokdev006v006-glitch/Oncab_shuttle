@@ -105,11 +105,17 @@ exports.show = async (req, res, next) => {
 // ── Create Driver ──────────────────────────────────────────
 exports.create = async (req, res, next) => {
   try {
-    const { name, email, mobile, aadhar, pan, sex, address, status, aadhar_img, pan_img, details } = req.body;
+        const { name, email, mobile, aadhar, pan, sex, address, status, aadhar_img, pan_img, details, is_bus_driver, preferred_bus_type_id } = req.body;
+        if (is_bus_driver && !preferred_bus_type_id) {
+            return res.status(400).json({ success: false, message: 'Preferred bus type is required for bus drivers' });
+        }
     const driver = await Driver.create({
       name,
       email,
       mobile,
+            vehicle_type_id: is_bus_driver ? 6 : undefined,
+            is_bus_driver: Boolean(is_bus_driver),
+            preferred_bus_type_id: is_bus_driver ? preferred_bus_type_id : null,
       aadhar,
       pan,
       sex,
@@ -169,6 +175,9 @@ exports.update = async (req, res, next) => {
         if (!driver) {
             return res.status(404).json({ success: false, message: 'Driver not found' });
         }
+        if (req.body.is_bus_driver && !req.body.preferred_bus_type_id) {
+            return res.status(400).json({ success: false, message: 'Preferred bus type is required for bus drivers' });
+        }
 
         const {
             name,
@@ -205,8 +214,14 @@ exports.update = async (req, res, next) => {
             if (newPanImg) uploadedFiles.push(newPanImg);
 
             const driverPayload = {};
-            for (const field of ['name', 'email', 'mobile', 'aadhar', 'pan', 'sex', 'address', 'status', 'block_status', 'online_status']) {
+            for (const field of ['name', 'email', 'mobile', 'aadhar', 'pan', 'sex', 'address', 'status', 'block_status', 'online_status', 'is_bus_driver', 'preferred_bus_type_id']) {
                 if (req.body[field] !== undefined) driverPayload[field] = req.body[field];
+            }
+            if (driverPayload.is_bus_driver) {
+                driverPayload.vehicle_type_id = 6;
+            } else if (driverPayload.is_bus_driver === false || driverPayload.is_bus_driver === 0) {
+                driverPayload.preferred_bus_type_id = null;
+                if (Number(driver.vehicle_type_id) === 6) driverPayload.vehicle_type_id = null;
             }
 
             const detailPayload = {};
